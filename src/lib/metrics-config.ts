@@ -225,7 +225,7 @@ export const SECTIONS: SectionDef[] = [
   {
     key: 'partners-aws',
     label: 'AWS & Hyperscalers',
-    description: "Total MQL's — WoW goals vs actuals bar graph",
+    description: 'Cloud Partner Marketing task tracker — completed vs in-progress work by bucket',
     metrics: [
       { key: 'total_mqls', label: "Total MQL's", unit: 'number' },
       { key: 'goal_mqls', label: "Goal MQL's", unit: 'number' },
