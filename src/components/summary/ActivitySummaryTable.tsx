@@ -36,7 +36,8 @@ export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-
 // dedicated pages/keys elsewhere in the app; this only changes how their
 // weekly status gets tracked and rolled up on the Summary page.
 const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[] }[] = [
-  { key: 'cat-paid-ads', label: 'Paid Ads', sectionKeys: ['ads'] },
+  { key: 'cat-ads', label: 'Ads', sectionKeys: ['ads'] },
+  { key: 'cat-gsi-founder-amp', label: 'GSI/SI & Founder Amplification', sectionKeys: ['gsi-si-founder-amplification'] },
   { key: 'cat-seo-content', label: 'SEO / Content', sectionKeys: ['seo', 'content', 'playbooks'] },
   { key: 'cat-products', label: 'Products', sectionKeys: ['studio-signups', 'architect', 'lyzr-gpt'] },
   { key: 'cat-social', label: 'Social & Influencers', sectionKeys: ['social-influencers', 'reddit'] },

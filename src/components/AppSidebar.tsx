@@ -7,7 +7,7 @@ import {
   Building2, Megaphone,
   Handshake, Cloud, Briefcase, MessageSquare,
   LogOut, PenLine, BarChart2, Globe, Share2, Mic, Cog,
-  Palette, FlaskConical, Video, BookOpen, DollarSign, Newspaper, BookMarked, Star, Award, Bot,
+  Palette, FlaskConical, Video, BookOpen, DollarSign, Newspaper, BookMarked, Star, Award, Bot, Radio,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
@@ -31,6 +31,13 @@ const groups: { label: string; items: NavItem[] }[] = [
     items: [
       { title: "SEO", url: "/seo", icon: Search },
       { title: "Content / Blogs", url: "/content", icon: PenLine },
+    ],
+  },
+  {
+    label: "Performance Channel",
+    items: [
+      { title: "Ads", url: "/ads", icon: Megaphone },
+      { title: "GSI/SI & Founder Amplification", url: "/gsi-si-founder-amplification", icon: Radio },
     ],
   },
   {
@@ -61,7 +68,6 @@ const groups: { label: string; items: NavItem[] }[] = [
       { title: "Email Marketing", url: "/email", icon: Mail },
       { title: "Events", url: "/events", icon: Calendar },
       { title: "Webinars", url: "/webinars", icon: Video },
-      { title: "Ads", url: "/ads", icon: Megaphone },
       { title: "Podcasts & Reach Out", url: "/podcasts", icon: Mic },
       { title: "Content Engine", url: "/content-engine", icon: Cog },
       { title: "Video Pipeline", url: "/video-pipeline", icon: Video },

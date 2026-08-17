@@ -47,6 +47,12 @@ export const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    key: 'gsi-si-founder-amplification',
+    label: 'GSI/SI & Founder Amplification',
+    description: 'GSI/SI and founder-led amplification campaign performance',
+    metrics: [],
+  },
+  {
     key: 'seo',
     label: 'SEO',
     description: 'Organic traffic, clicks, impressions, backlinks, and keyword positions',
