@@ -110,10 +110,11 @@ export async function GET(req: NextRequest) {
     const mode = searchParams.get('mode') // 'all' = all leads (no form type filter), default = MQLs only
     const noCache = searchParams.get('nocache') === '1'
     const includePipeline = searchParams.get('includePipeline') === '1' // opt-in: adds pipeline $ per source (expensive N+1 deal lookups)
+    const includeClosedWon = searchParams.get('includeClosedWon') === '1' // opt-in: which Opportunity+ contacts have an associated Closed Won deal
 
-    // Cache key must vary by includePipeline — otherwise a cached non-pipeline result
-    // would be returned for a request that explicitly asked for pipeline $ data (and vice versa).
-    const cacheKeyPrefix = `${mode === 'all' ? 'v4_all' : 'v4'}${includePipeline ? '_pipeline' : ''}`
+    // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
+    // from one flag combination could be served for a request that explicitly asked for the other.
+    const cacheKeyPrefix = `${mode === 'all' ? 'v4_all' : 'v4'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
     if (!noCache) {
@@ -477,6 +478,47 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Which Opportunity+ contacts (lifecyclestage 249550600 or customer) have at least one
+    // associated deal that reached Closed Won in the Studio Deals pipeline. GATED behind
+    // ?includeClosedWon=1 — scoped to Opportunity+ only (typically a handful of contacts)
+    // to keep the N+1 deal-association lookups cheap.
+    const closedWonContactIds: string[] = []
+    if (includeClosedWon) {
+      const CLOSED_WON_STAGE_ID = '982194449'
+      const oppPlusContactIds = contacts
+        .filter(c => OPP_STAGES.has(c.properties?.lifecyclestage || ''))
+        .map(c => c.id)
+      const BATCH2 = 8
+      for (let i = 0; i < oppPlusContactIds.length; i += BATCH2) {
+        const batch = oppPlusContactIds.slice(i, i + BATCH2)
+        const results = await Promise.all(batch.map(async (contactId) => {
+          try {
+            const assocRes = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/${contactId}/associations/deals?limit=5`, {
+              headers: { Authorization: `Bearer ${apiKey}` },
+            })
+            if (!assocRes.ok) return false
+            const assocData = await assocRes.json()
+            const dealIds = (assocData.results || []).map((r: any) => r.id)
+            if (dealIds.length === 0) return false
+            for (const dealId of dealIds) {
+              const dealRes = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/deals/${dealId}?properties=dealstage`, {
+                headers: { Authorization: `Bearer ${apiKey}` },
+              })
+              if (dealRes.ok) {
+                const dealData = await dealRes.json()
+                if (dealData.properties?.dealstage === CLOSED_WON_STAGE_ID) return true
+              }
+            }
+            return false
+          } catch { return false }
+        }))
+        results.forEach((isClosedWon, idx) => {
+          if (isClosedWon) closedWonContactIds.push(batch[idx])
+        })
+        if (i + BATCH2 < oppPlusContactIds.length) await new Promise(r => setTimeout(r, 150))
+      }
+    }
+
     const result = {
       total,
       mql_status_breakdown: {
@@ -534,6 +576,7 @@ export async function GET(req: NextRequest) {
       by_lead_status_raw: byLeadStatusRaw,
       date_range: { start, end },
       contacts_by_priority: contactsByPriority,
+      closed_won_contact_ids: closedWonContactIds,
     }
 
     // Cache the result (v2 prefix to invalidate old stale entries)

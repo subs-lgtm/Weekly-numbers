@@ -27,27 +27,46 @@ const summary: NavItem[] = [
 
 const groups: { label: string; items: NavItem[] }[] = [
   {
+    label: "SEO",
+    items: [
+      { title: "SEO", url: "/seo", icon: Search },
+      { title: "Content / Blogs", url: "/content", icon: PenLine },
+    ],
+  },
+  {
+    label: "Website",
+    items: [
+      { title: "Website", url: "/pages", icon: Globe },
+      { title: "UI/UX Design", url: "/ui-ux", icon: Palette },
+      { title: "PR (News Channels)", url: "/pr-news", icon: Newspaper },
+    ],
+  },
+  {
+    label: "DevRel",
+    items: [
+      { title: "DevRel", url: "/architect", icon: Building2 },
+      { title: "Docs & Tutorials", url: "/docs-tutorials", icon: BookMarked },
+    ],
+  },
+  {
+    label: "Social & Influencers",
+    items: [
+      { title: "Social & Influencers", url: "/social-influencers", icon: Share2 },
+      { title: "Reddit", url: "/reddit", icon: MessageSquare },
+    ],
+  },
+  {
     label: "Marketing",
     items: [
-      { title: "OKR's", url: "/okrs", icon: Target },
-      { title: "DevRel", url: "/architect", icon: Building2 },
       { title: "Email Marketing", url: "/email", icon: Mail },
       { title: "Events", url: "/events", icon: Calendar },
       { title: "Webinars", url: "/webinars", icon: Video },
-      { title: "SEO", url: "/seo", icon: Search },
       { title: "Ads", url: "/ads", icon: Megaphone },
-      { title: "Content / Blogs", url: "/content", icon: PenLine },
-      { title: "Website", url: "/pages", icon: Globe },
-      { title: "Social & Influencers", url: "/social-influencers", icon: Share2 },
-      { title: "Reddit", url: "/reddit", icon: MessageSquare },
       { title: "Podcasts & Reach Out", url: "/podcasts", icon: Mic },
       { title: "Content Engine", url: "/content-engine", icon: Cog },
       { title: "Video Pipeline", url: "/video-pipeline", icon: Video },
       { title: "Collaterals", url: "/collaterals", icon: BookOpen },
-      { title: "UI/UX Design", url: "/ui-ux", icon: Palette },
       { title: "Experiments & Videos", url: "/experiments-videos", icon: FlaskConical },
-      { title: "PR (News Channels)", url: "/pr-news", icon: Newspaper },
-      { title: "Docs & Tutorials", url: "/docs-tutorials", icon: BookMarked },
       { title: "Spotlight CVC", url: "/spotlight-cvc", icon: Star },
       { title: "Analyst Relations", url: "/analyst-relations", icon: BarChart2 },
       { title: "G2", url: "/g2", icon: Award },

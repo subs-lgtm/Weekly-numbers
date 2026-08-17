@@ -19,7 +19,6 @@ import { MQLJourneyFunnel } from '@/components/mql/MQLJourneyFunnel'
 import { PriorityAnalysis } from '@/components/mql/PriorityAnalysis'
 import { PriorityDetailsTable } from '@/components/mql/PriorityDetailsTable'
 import { MQLAgingBuckets } from '@/components/mql/MQLAgingBuckets'
-import { WoWFunnelTable } from '@/components/mql/WoWFunnelTable'
 import { PipelineTrendChart } from '@/components/mql/PipelineTrendChart'
 
 
@@ -375,11 +374,6 @@ function MQLPageInner() {
           <div className="section-sub">The complete lifecycle from Marketing Qualified Lead to closed Customer</div>
           {hubspotData?.funnel && <MQLJourneyFunnel funnel={hubspotData.funnel} monthlyFunnel={monthToDateFunnel ?? undefined} />}
 
-          {/* 6. 4-WEEK WoW BEHAVIOUR TREND */}
-          <div className="section-label">Week-over-Week Behaviour Trend</div>
-          <div className="section-sub">Last 4 weeks of funnel behaviour — spot patterns and momentum shifts</div>
-          <WoWFunnelTable weekStart={weekStart} contactsByPriority={hubspotData?.contacts_by_priority} />
-
           {/* 7. PRIORITY ANALYSIS */}
           <div className="section-label">Priority Analysis</div>
           <div className="section-sub">Response performance and downstream conversion by lead-score priority</div>
@@ -409,12 +403,6 @@ function MQLPageInner() {
           {hubspotData?.contacts_by_priority && (
             <MQLAgingBuckets contactsByPriority={hubspotData.contacts_by_priority} />
           )}
-
-          {/* ——— TEST PREVIEW: NEW WoW TABLE AT BOTTOM ——— */}
-          <div className="section-label" style={{ marginTop: 16 }}>⬇ Test Preview — Week-over-Week Behaviour Trend (New Design)</div>
-          <div className="section-sub">Click Opportunities or Customers to drill into the contacts — confirm this works before moving it up</div>
-          <WoWFunnelTable weekStart={weekStart} contactsByPriority={hubspotData?.contacts_by_priority} />
-          {/* ——————————————————————————————————————————— */}
         </div>
       )}
     </div>

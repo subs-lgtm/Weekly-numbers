@@ -14,7 +14,8 @@ import {
 } from "firebase/firestore";
 import { Loader2, TrendingUp, TrendingDown, Minus, Pencil, Check, X } from "lucide-react";
 import { HighPriorityLeads } from "@/components/summary/HighPriorityLeads";
-import { ActivitySummaryTable, ACTIVITY_SECTIONS, useActivitySummary } from "@/components/summary/ActivitySummaryTable";
+import { OKRSection } from "@/components/summary/OKRSection";
+import { ActivitySummaryTable, buildActivityItems, useActivitySummary } from "@/components/summary/ActivitySummaryTable";
 
 type RagItem = {
   id: string;
@@ -31,29 +32,51 @@ const RAG_CONFIG = {
   green: { label: "Green", emoji: "🟢", bg: "bg-[rgba(22,163,74,.06)]", border: "border-[rgba(22,163,74,.25)]", text: "text-[#16A34A]", dot: "bg-[#16A34A]" },
 };
 
-// Derives the top RAG board directly from Activity Summary entries — any row with
-// both a status and a summary written in shows up here automatically, in the
-// matching color. No separate manual entry; Activity Summary is the single source.
+const AMBER_TO_YELLOW = { red: "red", amber: "yellow", green: "green" } as const;
+
+// Derives the top RAG board directly from Activity Summary entries. Category
+// rows can contribute up to three flags each (one per red/yellow/green line);
+// "Other" rows contribute at most one (their single status + summary).
 function useDerivedRagFlags(weekStart: string) {
   const { data, loading } = useActivitySummary(weekStart);
+  const items = buildActivityItems();
 
-  const flags: RagItem[] = ACTIVITY_SECTIONS
-    .filter(s => {
-      const entry = data[s.key];
-      return entry?.status && entry?.summary?.trim();
-    })
-    .map(s => {
-      const entry = data[s.key];
-      const status = entry.status === "amber" ? "yellow" : entry.status;
-      return {
-        id: s.key,
-        status: status as "red" | "yellow" | "green",
-        title: s.label,
-        note: entry.summary,
+  const flags: RagItem[] = [];
+  for (const item of items) {
+    const entry = data[item.key];
+    if (!entry) continue;
+
+    // Category-style: up to 3 lines, one per color.
+    const lineFields: Array<["red" | "amber" | "green", string | undefined]> = [
+      ["red", entry.redLine], ["amber", entry.amberLine], ["green", entry.greenLine],
+    ];
+    let hadLine = false;
+    for (const [color, text] of lineFields) {
+      if (text?.trim()) {
+        hadLine = true;
+        flags.push({
+          id: `${item.key}-${color}`,
+          status: AMBER_TO_YELLOW[color],
+          title: item.label,
+          note: text.trim(),
+          createdBy: entry.updatedBy,
+          updatedAt: entry.updatedAt,
+        });
+      }
+    }
+
+    // "Other"-style: single cycling status + summary.
+    if (!hadLine && entry.status && entry.summary?.trim()) {
+      flags.push({
+        id: item.key,
+        status: AMBER_TO_YELLOW[entry.status],
+        title: item.label,
+        note: entry.summary.trim(),
         createdBy: entry.updatedBy,
         updatedAt: entry.updatedAt,
-      };
-    });
+      });
+    }
+  }
 
   return { flags, loading };
 }
@@ -200,13 +223,13 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
         }))
       }
       if (allCurr && !allCurr.error) {
-        // Exclude Book a Demo (Book a Demo + Email Form + Pre-Built Agents) from total leads — those are MQLs
-        const bookDemoCount = (allCurr.by_form_type?.['Book a Demo'] || 0) + (allCurr.by_form_type?.['Email Form'] || 0) + (allCurr.by_form_type?.['Pre-Built Agents'] || 0)
-        setData(d => ({ ...d, 'mqls:total_leads': String((allCurr.total || 0) - bookDemoCount) }))
+        // Exclude Agent Studio + Book a Demo from total leads — every other form type counts.
+        const excludedCount = (allCurr.by_form_type?.['Book a Demo'] || 0) + (allCurr.by_form_type?.['Agent Studio'] || 0)
+        setData(d => ({ ...d, 'mqls:total_leads': String((allCurr.total || 0) - excludedCount) }))
       }
       if (allPrev && !allPrev.error) {
-        const prevBookDemoCount = (allPrev.by_form_type?.['Book a Demo'] || 0) + (allPrev.by_form_type?.['Email Form'] || 0) + (allPrev.by_form_type?.['Pre-Built Agents'] || 0)
-        setPrevData(d => ({ ...d, 'mqls:total_leads': String((allPrev.total || 0) - prevBookDemoCount) }))
+        const prevExcludedCount = (allPrev.by_form_type?.['Book a Demo'] || 0) + (allPrev.by_form_type?.['Agent Studio'] || 0)
+        setPrevData(d => ({ ...d, 'mqls:total_leads': String((allPrev.total || 0) - prevExcludedCount) }))
       }
       if (metrics && !metrics.error) {
         setData(d => ({
@@ -589,6 +612,9 @@ export default function SummaryPage() {
 
           {/* High Priority Leads — synced to date range */}
           <HighPriorityLeads queryStart={queryStart || ws} queryEnd={queryEnd || format(addWeeks(new Date(ws + 'T00:00:00'), 1), 'yyyy-MM-dd')} />
+
+          {/* OKR's — moved in from its own sidebar page */}
+          <OKRSection />
         </div>
       )}
     </SectionShell>

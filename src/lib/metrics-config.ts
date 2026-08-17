@@ -124,12 +124,6 @@ export const SECTIONS: SectionDef[] = [
     metrics: [],
   },
   {
-    key: 'okrs',
-    label: "OKR's",
-    description: 'Objectives & Key Results — qualitative weekly status',
-    metrics: [],
-  },
-  {
     key: 'playbooks',
     label: 'Playbooks',
     description: 'Total leads, organic vs ads split, ad spend, and top playbooks',

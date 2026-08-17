@@ -9,25 +9,60 @@ import { SECTIONS } from '@/lib/metrics-config'
 export type ActivityStatus = 'red' | 'amber' | 'green'
 
 export type ActivityEntry = {
-  status: ActivityStatus
-  summary: string
+  // "Other" rows: single cycling status + one summary line.
+  status?: ActivityStatus
+  summary?: string
+  // Category rows: three fixed lines, one per color — a stakeholder can give
+  // a red update, a yellow update, and a green update, independently.
+  redLine?: string
+  amberLine?: string
+  greenLine?: string
   owner: string
   updatedBy: string
   updatedAt: any
+}
+
+export const STATUS_LINE_FIELD: Record<ActivityStatus, 'redLine' | 'amberLine' | 'greenLine'> = {
+  red: 'redLine', amber: 'amberLine', green: 'greenLine',
 }
 
 // Only show functions that make sense as a one-line weekly activity row.
 // mqls/leads are aggregate rollups covered elsewhere on this page, not a "function".
 export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads'].includes(s.key))
 
-// Groups existing sections under shared category headers for display.
-// Section keys/labels/ownership are unchanged elsewhere in the app — this only
-// affects how rows are grouped and headed in this table.
-const CATEGORIES: { label: string; sectionKeys: string[] }[] = [
-  { label: 'Content', sectionKeys: ['seo', 'pages', 'content'] },
-  { label: 'Social', sectionKeys: ['social-influencers', 'reddit'] },
-  { label: 'DevRel', sectionKeys: ['architect', 'docs-tutorials'] },
+// Each category collapses multiple existing sections into a SINGLE trackable
+// row — one status dot, one summary, one owner, one Firestore doc — covering
+// everything listed in sectionKeys. The underlying sections keep their own
+// dedicated pages/keys elsewhere in the app; this only changes how their
+// weekly status gets tracked and rolled up on the Summary page.
+const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[] }[] = [
+  { key: 'cat-paid-ads', label: 'Paid Ads', sectionKeys: ['ads'] },
+  { key: 'cat-seo-content', label: 'SEO / Content', sectionKeys: ['seo', 'content', 'playbooks'] },
+  { key: 'cat-products', label: 'Products', sectionKeys: ['studio-signups', 'architect', 'lyzr-gpt'] },
+  { key: 'cat-social', label: 'Social & Influencers', sectionKeys: ['social-influencers', 'reddit'] },
+  { key: 'cat-website', label: 'Website', sectionKeys: ['pages', 'ui-ux', 'pr-news'] },
+  { key: 'cat-partners', label: 'Partners', sectionKeys: ['partners-emerging', 'partners-aws', 'partners-gsi'] },
 ]
+
+export type ActivityItem = { key: string; label: string; sublabel?: string }
+
+const sectionLabel = (key: string) => SECTIONS.find(s => s.key === key)?.label || key
+
+// Unified list consumed by both this table and the Summary page's RAG board —
+// category rows first, then every remaining individual section not covered
+// by a category (unchanged, one row each, as before).
+export function buildActivityItems(): ActivityItem[] {
+  const categorizedKeys = new Set(CATEGORY_GROUPS.flatMap(c => c.sectionKeys))
+  const categoryItems: ActivityItem[] = CATEGORY_GROUPS.map(c => ({
+    key: c.key,
+    label: c.label,
+    sublabel: c.sectionKeys.map(sectionLabel).join(' · '),
+  }))
+  const otherItems: ActivityItem[] = ACTIVITY_SECTIONS
+    .filter(s => !categorizedKeys.has(s.key))
+    .map(s => ({ key: s.key, label: s.label }))
+  return [...categoryItems, ...otherItems]
+}
 
 // Team roster — from the reference mockup. Editable per row via dropdown.
 const OWNER_OPTIONS = [
@@ -61,11 +96,6 @@ const STATUS_CONFIG: Record<ActivityStatus, { dot: string; label: string; rowBg:
   amber: { dot: 'bg-[#D97706]', label: 'Yellow', rowBg: 'bg-[rgba(217,119,6,.045)]' },
   green: { dot: 'bg-[#16A34A]', label: 'Green',  rowBg: 'bg-[rgba(22,163,74,.045)]' },
 }
-
-const STATUS_CYCLE: ActivityStatus[] = ['green', 'amber', 'red']
-
-// Column widths shared by header + rows so nothing overlaps/merges.
-const ROW_GRID = 'grid-cols-[150px_66px_1fr_150px_96px]'
 
 function timeAgo(iso: string | null): string {
   if (!iso) return '—'
@@ -146,68 +176,97 @@ function OwnerSelect({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-function ActivityRow({
-  label, entry, defaultOwner, onSave,
+const COLOR_LINE_ORDER: ActivityStatus[] = ['red', 'amber', 'green']
+
+function ColorLine({
+  status, value, onCommit,
 }: {
-  label: string
-  entry: ActivityEntry | undefined
-  defaultOwner: string
-  onSave: (updates: Partial<ActivityEntry>) => void
+  status: ActivityStatus
+  value: string
+  onCommit: (v: string) => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(entry?.summary || '')
-  const status = entry?.status || null
-  const updatedAtStr = entry?.updatedAt?.toDate?.()?.toISOString() || null
-  const ownerValue = entry?.owner ?? defaultOwner ?? ''
+  const [draft, setDraft] = useState(value)
+  const cfg = STATUS_CONFIG[status]
 
-  const cycleStatus = () => {
-    const current = status || 'green'
-    const idx = STATUS_CYCLE.indexOf(current)
-    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
-    onSave({ status: next })
-  }
-
-  const commitSummary = () => {
+  const commit = () => {
     setEditing(false)
-    if (draft.trim() !== (entry?.summary || '')) {
-      onSave({ summary: draft.trim() })
-    }
+    if (draft.trim() !== value) onCommit(draft.trim())
   }
 
   return (
-    <div className={`grid ${ROW_GRID} items-center gap-3.5 px-4 py-3 border-b border-[#EEE7DC] last:border-0 transition-colors ${status ? STATUS_CONFIG[status].rowBg : ''} hover:brightness-[0.98]`}>
-      <div className="text-[13px] font-[600] text-[#2A1F1A] truncate">{label}</div>
-      <button
-        onClick={cycleStatus}
-        title={`Status: ${status ? STATUS_CONFIG[status].label : 'Not set'} — click to change`}
-        className="justify-self-center flex h-6 w-6 items-center justify-center rounded-full transition-transform hover:scale-110"
-      >
-        <span
-          className={`block h-[11px] w-[11px] rounded-full ${status ? STATUS_CONFIG[status].dot : 'bg-[#E5DDD1] border border-[#D4CBC0]'}`}
-        />
-      </button>
+    <div className="flex items-center gap-2">
+      <span className={`block h-[9px] w-[9px] rounded-full flex-shrink-0 ${cfg.dot}`} title={cfg.label} />
       {editing ? (
         <input
           type="text"
           value={draft}
           onChange={e => setDraft(e.target.value)}
-          onBlur={commitSummary}
-          onKeyDown={e => { if (e.key === 'Enter') commitSummary(); if (e.key === 'Escape') { setDraft(entry?.summary || ''); setEditing(false) } }}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value); setEditing(false) } }}
           autoFocus
-          placeholder="What happened this week?"
-          className="text-[12.5px] text-[#2A1F1A] bg-white border border-[#6B4C4C] rounded-[6px] px-2 py-1 outline-none ring-1 ring-[rgba(107,76,76,.15)]"
+          placeholder={`${cfg.label} update…`}
+          className="flex-1 text-[12.5px] text-[#2A1F1A] bg-white border border-[#6B4C4C] rounded-[6px] px-2 py-0.5 outline-none ring-1 ring-[rgba(107,76,76,.15)]"
         />
       ) : (
         <p
-          className="text-[12.5px] text-[#6B4C4C] leading-[1.4] cursor-pointer truncate"
-          onDoubleClick={() => { setDraft(entry?.summary || ''); setEditing(true) }}
+          className="flex-1 text-[12.5px] text-[#6B4C4C] leading-[1.4] cursor-pointer truncate"
+          onDoubleClick={() => { setDraft(value); setEditing(true) }}
           title="Double-click to edit"
         >
-          {entry?.summary || <span className="text-[#D4CBC0] italic">Double-click to add update…</span>}
+          {value || <span className="text-[#D4CBC0] italic">Double-click to add a {cfg.label.toLowerCase()} update…</span>}
         </p>
       )}
-      <OwnerSelect value={ownerValue} onChange={(v) => onSave({ owner: v })} />
-      <div className="text-[11.5px] text-[#7A6A60] text-right">{timeAgo(updatedAtStr)}</div>
+    </div>
+  )
+}
+
+// Category rows: one card per stakeholder group, with three independent
+// lines (red/yellow/green) instead of a single cycling status — a
+// stakeholder can report a blocker, a caution, and a win in the same week.
+function CategoryCard({
+  label, sublabel, entry, defaultOwner, onSave,
+}: {
+  label: string
+  sublabel?: string
+  entry: ActivityEntry | undefined
+  defaultOwner: string
+  onSave: (updates: Partial<ActivityEntry>) => void
+}) {
+  const updatedAtStr = entry?.updatedAt?.toDate?.()?.toISOString() || null
+  const ownerValue = entry?.owner ?? defaultOwner ?? ''
+
+  return (
+    <div className="px-4 py-3 border-b border-[#EEE7DC] last:border-0 hover:brightness-[0.98] transition-colors">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <div className="text-[13px] font-[600] text-[#2A1F1A] truncate">{label}</div>
+          {sublabel && <div className="text-[10px] text-[#7A6A60] truncate" title={sublabel}>{sublabel}</div>}
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <OwnerSelect value={ownerValue} onChange={(v) => onSave({ owner: v })} />
+          <div className="text-[11.5px] text-[#7A6A60] w-16 text-right">{timeAgo(updatedAtStr)}</div>
+        </div>
+      </div>
+      <div className="space-y-1.5 pl-0.5">
+        {COLOR_LINE_ORDER.map(status => {
+          const field = STATUS_LINE_FIELD[status]
+          // Fall back to the old single status+summary shape so nothing
+          // written before this format existed appears to vanish — it shows
+          // in the matching color slot until edited, at which point it's
+          // saved into the new per-line field.
+          const legacyValue = entry?.status === status ? entry?.summary : undefined
+          const value = entry?.[field] || legacyValue || ''
+          return (
+            <ColorLine
+              key={status}
+              status={status}
+              value={value}
+              onCommit={(v) => onSave({ [field]: v })}
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -234,44 +293,39 @@ export function ActivitySummaryTable({ weekStart }: { weekStart: string }) {
     )
   }
 
-  const bySectionKey = new Map(ACTIVITY_SECTIONS.map(s => [s.key, s]))
-  const categorizedKeys = new Set(CATEGORIES.flatMap(c => c.sectionKeys))
-  const otherSections = ACTIVITY_SECTIONS.filter(s => !categorizedKeys.has(s.key))
-
-  const renderRow = (key: string) => {
-    const s = bySectionKey.get(key)
-    if (!s) return null
-    return (
-      <ActivityRow
-        key={s.key}
-        label={s.label}
-        entry={data[s.key]}
-        defaultOwner={DEFAULT_OWNERS[s.key] || ''}
-        onSave={(updates) => { void saveEntry(s.key, updates, user?.email || 'unknown') }}
-      />
-    )
-  }
+  const items = buildActivityItems()
+  const categoryKeys = new Set(CATEGORY_GROUPS.map(c => c.key))
+  const categoryItems = items.filter(i => categoryKeys.has(i.key))
+  const otherItems = items.filter(i => !categoryKeys.has(i.key))
 
   return (
     <div className="rounded-[16px] border border-[#D4CBC0] bg-white overflow-hidden shadow-[0_4px_20px_rgba(40,20,10,.04)]">
-      <div className={`grid ${ROW_GRID} gap-3.5 px-4 py-2.5 text-[10.5px] uppercase tracking-[.07em] text-[#7A6A60] font-[600] bg-[#FBF8F4] border-b border-[#D4CBC0]`}>
-        <div className="overflow-hidden truncate">Function</div>
-        <div className="text-center overflow-hidden truncate">Status</div>
-        <div className="overflow-hidden truncate">Summary</div>
-        <div className="overflow-hidden truncate">Owner</div>
-        <div className="text-right overflow-hidden truncate">Updated</div>
+      <div>
+        <CategoryHeader label="Categories — one red, one yellow, one green line each" />
+        {categoryItems.map(item => (
+          <CategoryCard
+            key={item.key}
+            label={item.label}
+            sublabel={item.sublabel}
+            entry={data[item.key]}
+            defaultOwner={DEFAULT_OWNERS[item.key] || ''}
+            onSave={(updates) => { void saveEntry(item.key, updates, user?.email || 'unknown') }}
+          />
+        ))}
       </div>
 
-      {CATEGORIES.map(cat => (
-        <div key={cat.label}>
-          <CategoryHeader label={cat.label} />
-          {cat.sectionKeys.map(renderRow)}
-        </div>
-      ))}
-
       <div>
-        <CategoryHeader label="Other" />
-        {otherSections.map(s => renderRow(s.key))}
+        <CategoryHeader label="Other Functions — one red, one yellow, one green line each" />
+        {otherItems.map(item => (
+          <CategoryCard
+            key={item.key}
+            label={item.label}
+            sublabel={item.sublabel}
+            entry={data[item.key]}
+            defaultOwner={DEFAULT_OWNERS[item.key] || ''}
+            onSave={(updates) => { void saveEntry(item.key, updates, user?.email || 'unknown') }}
+          />
+        ))}
       </div>
     </div>
   )

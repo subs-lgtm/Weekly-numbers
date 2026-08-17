@@ -9,7 +9,7 @@ type Funnel = {
   demo_completed: number
   sql: number
   opportunity: number
-  customer: number
+  closed_won: number
 }
 
 type Contact = {
@@ -42,7 +42,7 @@ const ROWS: { key: keyof Funnel; label: string; drilldownStage?: string }[] = [
   { key: 'demo_completed', label: 'Demo Completed' },
   { key: 'sql',            label: 'SQLs' },
   { key: 'opportunity',    label: 'Opportunities', drilldownStage: 'opportunity' },
-  { key: 'customer',       label: 'Customers',     drilldownStage: 'customer' },
+  { key: 'closed_won',     label: 'Closed Won',    drilldownStage: 'closed_won' },
 ]
 
 function MiniBar({ vals }: { vals: number[] }) {
@@ -108,13 +108,12 @@ function DrilldownRow({
 
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/hubspot/mqls?start=${weekStart}&end=${weekEnd}`)
+    const url = stage === 'closed_won'
+      ? `/api/hubspot/mqls?start=${weekStart}&end=${weekEnd}&includeClosedWon=1`
+      : `/api/hubspot/mqls?start=${weekStart}&end=${weekEnd}`
+    fetch(url)
       .then(r => r.json())
       .then(data => {
-        // Use funnel counts as the canonical source — matches server-side OPP_STAGES logic
-        if (stage === 'opportunity') setCanonicalCount(data.funnel?.opportunity ?? count)
-        if (stage === 'customer')    setCanonicalCount(data.funnel?.customer    ?? count)
-
         const allContacts: Contact[] = []
         const byPriority = data.contacts_by_priority
         if (byPriority) {
@@ -122,22 +121,25 @@ function DrilldownRow({
             if (Array.isArray(group)) allContacts.push(...(group as Contact[]))
           }
         }
-        const filtered = allContacts.filter(c => {
-          const ls = (c.lifecycleStage || '').toLowerCase()
-          // Exclusive counts — Opportunity and Customer are non-overlapping
-          // Opportunity: contacts strictly at opportunity stage (HubSpot custom ID '249550600'), not yet customers
-          if (stage === 'opportunity') return ls === '249550600'
-          // Customer: exactly 'customer' stage
-          if (stage === 'customer') return ls === 'customer'
-          return false
-        })
-        setContacts(filtered)
+
+        if (stage === 'opportunity') {
+          setCanonicalCount(data.funnel?.opportunity ?? count)
+          setContacts(allContacts.filter(c => (c.lifecycleStage || '').toLowerCase() === '249550600'))
+          return
+        }
+
+        // Closed Won: of the Opportunity+ contacts this week, which have at least one
+        // associated deal in the Studio Deals pipeline's Closed Won stage — not the
+        // contact-level lifecyclestage, which is often stale/unmaintained.
+        const closedWonIds: Set<string> = new Set(data.closed_won_contact_ids || [])
+        setCanonicalCount(closedWonIds.size)
+        setContacts(allContacts.filter(c => closedWonIds.has(c.id)))
       })
       .catch(() => setContacts([]))
       .finally(() => setLoading(false))
-  }, [weekStart, weekEnd, stage])
+  }, [weekStart, weekEnd, stage, count])
 
-  const label = stage === 'opportunity' ? 'Opportunities' : 'Customers'
+  const label = stage === 'opportunity' ? 'Opportunities' : 'Closed Won'
 
   return (
     <tr>
@@ -197,10 +199,10 @@ function DrilldownRow({
                     <td style={{ padding: '8px 12px', fontSize: 12 }}>
                       <span style={{
                         fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 4,
-                        background: stage === 'customer' ? 'rgba(22,163,74,.12)' : 'rgba(37,99,235,.10)',
-                        color: stage === 'customer' ? '#15803d' : '#1d4ed8',
+                        background: stage === 'closed_won' ? 'rgba(22,163,74,.12)' : 'rgba(37,99,235,.10)',
+                        color: stage === 'closed_won' ? '#15803d' : '#1d4ed8',
                       }}>
-                        {stage === 'customer' ? 'Customer' : 'Opportunity'}
+                        {stage === 'closed_won' ? 'Closed Won' : 'Opportunity'}
                       </span>
                     </td>
                     <td style={{ padding: '8px 12px', fontSize: 12, color: '#898781' }}>
@@ -249,10 +251,9 @@ export function WoWFunnelTable({ weekStart }: Props) {
         weekKeys.map(async ({ wk, label }) => {
           const end = format(addWeeks(new Date(wk + 'T00:00:00'), 1), 'yyyy-MM-dd')
           try {
-            const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}`)
+            const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&includeClosedWon=1`)
             const data = await res.json()
-            // Count opportunity + customer directly from contacts_by_priority
-            // to match exactly what the drilldown filter shows (OPP_STAGES = ['249550600', 'customer'])
+            // Opportunity count from contacts_by_priority, matching the drilldown filter.
             const f = data.funnel || {}
             const allC: any[] = []
             const byP = data.contacts_by_priority || {}
@@ -262,9 +263,9 @@ export function WoWFunnelTable({ weekStart }: Props) {
               // Exclusive: only contacts AT opportunity stage, not those who've advanced to customer
               return ls === '249550600'
             }).length
-            const custCount = allC.filter(c =>
-              (c.lifecycleStage || '').toLowerCase() === 'customer'
-            ).length
+            // Closed Won: Opportunity+ contacts with an associated deal in the Studio Deals
+            // pipeline's Closed Won stage — deal stage, not the often-stale contact lifecyclestage.
+            const closedWonCount = (data.closed_won_contact_ids || []).length
 
             return {
               label, weekStart: wk, weekEnd: end,
@@ -274,12 +275,12 @@ export function WoWFunnelTable({ weekStart }: Props) {
                 demo_completed: f.demo_completed || 0,
                 sql:            f.sql            || 0,
                 opportunity:    oppCount,
-                customer:       custCount,
+                closed_won:     closedWonCount,
               },
             }
           } catch {
             const end2 = format(addWeeks(new Date(wk + 'T00:00:00'), 1), 'yyyy-MM-dd')
-            return { label, weekStart: wk, weekEnd: end2, funnel: { mqls: 0, demo_booked: 0, demo_completed: 0, sql: 0, opportunity: 0, customer: 0 } }
+            return { label, weekStart: wk, weekEnd: end2, funnel: { mqls: 0, demo_booked: 0, demo_completed: 0, sql: 0, opportunity: 0, closed_won: 0 } }
           }
         })
       )
@@ -437,7 +438,7 @@ export function WoWFunnelTable({ weekStart }: Props) {
           This week
         </span>
         <span style={{ marginLeft: 'auto' }}>
-          Click any non-zero <strong>Opportunities</strong> or <strong>Customers</strong> cell to see who they are
+          Click any non-zero <strong>Opportunities</strong> or <strong>Closed Won</strong> cell to see who they are
         </span>
       </div>
     </div>
