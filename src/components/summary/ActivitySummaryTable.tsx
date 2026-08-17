@@ -28,7 +28,9 @@ export const STATUS_LINE_FIELD: Record<ActivityStatus, 'redLine' | 'amberLine' |
 
 // Only show functions that make sense as a one-line weekly activity row.
 // mqls/leads are aggregate rollups covered elsewhere on this page, not a "function".
-export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads'].includes(s.key))
+// agentpreneur: activity stopped ~a month ago — excluded here (not deleted from
+// metrics-config) so it's a one-line change to bring back if it resumes.
+export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads', 'agentpreneur'].includes(s.key))
 
 // Each category collapses multiple existing sections into a SINGLE trackable
 // row — one status dot, one summary, one owner, one Firestore doc — covering
