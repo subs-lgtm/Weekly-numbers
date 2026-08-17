@@ -1,0 +1,49 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+
+# build
+build/
+dist/
+
+# env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# OS
+.DS_Store
+Thumbs.db
+
+# misc
+package-lock.json
+.env*
+
+# excluded: contain hardcoded service-account private key / API keys
+# (see chat for full list — recommend rotating the key and moving to env vars)
+scripts/
+src/app/api/youtube-followers/route.ts
+src/app/api/budget-spends/route.ts
+src/app/api/influencers/route.ts
+src/app/api/studio-signups/route.ts
+src/app/api/summary-metrics/route.ts
+src/app/api/youtube-views/route.ts
+src/app/api/seo/data/route.ts
+src/app/api/linkedin-followers/route.ts

@@ -1,0 +1,451 @@
+@import "tailwindcss" source(none);
+@source "../";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─── Lyzr Design Tokens ───────────────────────────────────────────────────── */
+/* Reference: DESIGN.md — sourced from lyzr_brand_guidelines_2026.txt         */
+
+@theme inline {
+  /* Radius */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-2xl:  22px;
+  --radius-3xl:  28px;
+  --radius-pill: 9999px;
+
+  /* Semantic color mappings → Tailwind utilities */
+  --color-background:           var(--background);
+  --color-foreground:           var(--foreground);
+  --color-card:                 var(--card);
+  --color-card-foreground:      var(--card-foreground);
+  --color-popover:              var(--popover);
+  --color-popover-foreground:   var(--popover-foreground);
+  --color-primary:              var(--primary);
+  --color-primary-foreground:   var(--primary-foreground);
+  --color-secondary:            var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted:                var(--muted);
+  --color-muted-foreground:     var(--muted-foreground);
+  --color-accent:               var(--accent);
+  --color-accent-foreground:    var(--accent-foreground);
+  --color-destructive:          var(--destructive);
+  --color-border:               var(--border);
+  --color-input:                var(--input);
+  --color-ring:                 var(--ring);
+
+  /* Chart colors — Lyzr brand palette */
+  --color-chart-1: #6B4C4C;
+  --color-chart-2: #C96A5A;
+  --color-chart-3: #8A6060;
+  --color-chart-4: #4ADE80;
+  --color-chart-5: #D97706;
+
+  /* Sidebar */
+  --color-sidebar:                    var(--sidebar);
+  --color-sidebar-foreground:         var(--sidebar-foreground);
+  --color-sidebar-primary:            var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent:             var(--sidebar-accent);
+  --color-sidebar-accent-foreground:  var(--sidebar-accent-foreground);
+  --color-sidebar-border:             var(--sidebar-border);
+  --color-sidebar-ring:               var(--sidebar-ring);
+
+  /* Lyzr brand raw tokens — available as CSS vars everywhere */
+  --color-mahogany:    #6B4C4C;
+  --color-mauve:       #8A6060;
+  --color-near-black:  #160F0B;
+  --color-espresso:    #1E1610;
+  --color-linen:       #EBE5DC;
+  --color-cream:       #F2EDE8;
+  --color-parchment:   #F9F5F1;
+  --color-warm-border: #D4CBC0;
+  --color-rose:        #C96A5A;
+  --color-ink:         #2A1F1A;
+  --color-muted-warm:  #7A6A60;
+  --color-sage:        #4ADE80;
+}
+
+/* ─── Light Theme (default) ────────────────────────────────────────────────── */
+:root {
+  --radius: 16px;
+
+  /* Backgrounds — Warm Linen as main canvas */
+  --background:        #EBE5DC;
+  --foreground:        #2A1F1A;
+
+  /* Cards — Cream */
+  --card:              #F2EDE8;
+  --card-foreground:   #2A1F1A;
+
+  /* Popover */
+  --popover:           #FFFFFF;
+  --popover-foreground: #2A1F1A;
+
+  /* Primary — Deep Mahogany */
+  --primary:           #6B4C4C;
+  --primary-foreground: #F9F5F1;
+
+  /* Secondary — Parchment */
+  --secondary:         #F9F5F1;
+  --secondary-foreground: #6B4C4C;
+
+  /* Muted */
+  --muted:             #F2EDE8;
+  --muted-foreground:  #7A6A60;
+
+  /* Accent — Dusty Rose */
+  --accent:            #C96A5A;
+  --accent-foreground: #FFFFFF;
+
+  /* Destructive */
+  --destructive:       #DC2626;
+
+  /* Borders & inputs */
+  --border:            #D4CBC0;
+  --input:             #F2EDE8;
+  --ring:              rgba(107,76,76,.30);
+
+  /* Sidebar — Cream */
+  --sidebar:                    #F2EDE8;
+  --sidebar-foreground:         #2A1F1A;
+  --sidebar-primary:            #6B4C4C;
+  --sidebar-primary-foreground: #F9F5F1;
+  --sidebar-accent:             rgba(107,76,76,.08);
+  --sidebar-accent-foreground:  #6B4C4C;
+  --sidebar-border:             #D4CBC0;
+  --sidebar-ring:               rgba(107,76,76,.20);
+
+  /* Shadows */
+  --shadow-resting:  0 4px 20px rgba(40,20,10,.07);
+  --shadow-elevated: 0 8px 32px rgba(40,20,10,.10);
+  --shadow-hover:    0 8px 40px rgba(40,20,10,.13);
+  --shadow-btn:      0 12px 32px rgba(107,76,76,.35);
+}
+
+/* ─── Dark Theme ───────────────────────────────────────────────────────────── */
+.dark {
+  --background:        #160F0B;
+  --foreground:        #F0E8E4;
+  --card:              #261A15;
+  --card-foreground:   #F0E8E4;
+  --popover:           #1E1610;
+  --popover-foreground: #F0E8E4;
+  --primary:           #C96A5A;
+  --primary-foreground: #F0E8E4;
+  --secondary:         #261A15;
+  --secondary-foreground: #F0E8E4;
+  --muted:             #261A15;
+  --muted-foreground:  rgba(240,232,228,.55);
+  --accent:            #C96A5A;
+  --accent-foreground: #F0E8E4;
+  --destructive:       #DC2626;
+  --border:            rgba(255,255,255,.07);
+  --input:             rgba(255,255,255,.08);
+  --ring:              rgba(201,106,90,.35);
+  --sidebar:                    #1E1610;
+  --sidebar-foreground:         #F0E8E4;
+  --sidebar-primary:            #C96A5A;
+  --sidebar-primary-foreground: #F0E8E4;
+  --sidebar-accent:             rgba(201,106,90,.12);
+  --sidebar-accent-foreground:  #F0E8E4;
+  --sidebar-border:             rgba(255,255,255,.07);
+  --sidebar-ring:               rgba(201,106,90,.25);
+}
+
+/* ─── Base Styles ──────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    border-color: var(--color-border);
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-dm-sans), 'Inter', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.88;
+    font-weight: 400;
+  }
+
+  /* Headings — Playfair Display, weight 400, never bold */
+  h1, h2, h3, h4 {
+    font-family: var(--font-playfair), Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    color: var(--foreground);
+  }
+
+  h3, h4 { font-weight: 500; letter-spacing: -0.02em; }
+
+  /* Body text */
+  p, li, td, th, label, span, div {
+    font-family: var(--font-dm-sans), 'Inter', system-ui, sans-serif;
+  }
+
+  /* Scrollbar — subtle warm tone */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D4CBC0; border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8A6060; }
+}
+
+/* ─── Utility Classes ──────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Eyebrow label */
+  .eyebrow {
+    font-family: var(--font-dm-sans), sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: #7A6A60;
+  }
+
+  /* Caption */
+  .caption {
+    font-family: var(--font-dm-sans), sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.40;
+    color: #7A6A60;
+  }
+
+  /* Badge */
+  .badge-lyzr {
+    font-family: var(--font-dm-sans), sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    border-radius: 9999px;
+    padding: 2px 8px;
+  }
+
+  /* Card hover */
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-hover);
+  }
+
+  /* Playfair italic accent in Dusty Rose */
+  .accent-italic {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    color: #C96A5A;
+  }
+
+  /* Live pulse dot */
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background: hsl(140,50%,38%);
+    animation: pulse-live 2.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse-live {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
+  }
+
+  /* Trend delta badges */
+  .delta-up   { color: #16A34A; background: rgba(74,222,128,.12); }
+  .delta-down { color: #DC2626; background: rgba(220,38,38,.10); }
+  .delta-flat { color: #7A6A60; background: rgba(122,106,96,.10); }
+
+  /* Warm gradient — brand hero */
+  .gradient-brand {
+    background: linear-gradient(90deg, #6B4C4C, #C96A5A);
+  }
+
+  /* Section background ladder */
+  .bg-linen    { background-color: #EBE5DC; }
+  .bg-cream    { background-color: #F2EDE8; }
+  .bg-parchment { background-color: #F9F5F1; }
+  .bg-warm     { background-color: #E6DFD5; }
+  .bg-deeper   { background-color: #160F0B; }
+  .bg-deep     { background-color: #1E1610; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MQL Reference-HTML Structural Parity
+   Ported from weekly-marketing-numbers-mothilal.html, remapped onto this
+   app's own design tokens (var(--color-*), var(--border), etc.) so the
+   DOM structure / layout groupings on the MQL page exactly match the
+   reference mockup while staying visually consistent with the rest of
+   the app's Lyzr brand palette.
+   ───────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Section headers */
+  .section-label {
+    font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
+    color: #7A6A60; font-weight: 600; margin: 34px 0 12px 0;
+  }
+  .section-label.first { margin-top: 4px; }
+  .section-sub { font-size: 12.5px; color: #7A6A60; margin: -8px 0 14px 0; }
+  .subhead { font-size: 12.5px; font-weight: 700; color: #2A1F1A; margin: 20px 0 12px 0; display: flex; align-items: center; gap: 8px; }
+  .subhead-tag { font-size: 10px; font-weight: 600; color: #7A6A60; text-transform: uppercase; letter-spacing: .06em; background: #F9F5F1; border: 1px solid #D4CBC0; padding: 2px 8px; border-radius: 20px; }
+
+  /* Generic card + row grids */
+  .card { background: #FFFFFF; border: 1px solid #D4CBC0; border-radius: 16px; padding: 22px; box-shadow: 0 4px 20px rgba(40,20,10,.07); }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+  .card-title { font-size: 14.5px; font-weight: 700; color: #2A1F1A; }
+  .card-note { font-size: 11.5px; color: #7A6A60; }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .row-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+  .row-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+  .row-6 { display: grid; grid-template-columns: repeat(6,1fr); gap: 12px; }
+  .mt { margin-top: 16px; }
+
+  /* KPI cards */
+  .kpi-card { background: #FFFFFF; border: 1px solid #D4CBC0; border-radius: 15px; padding: 18px 19px; box-shadow: 0 4px 20px rgba(40,20,10,.07); }
+  .kpi-label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #7A6A60; font-weight: 600; margin-bottom: 9px; }
+  .kpi-value { font-family: var(--font-playfair), serif; font-size: 30px; font-weight: 500; line-height: 1; margin-bottom: 8px; color: #2A1F1A; }
+  .kpi-value small { font-size: 14px; color: #7A6A60; font-weight: 400; font-family: var(--font-dm-sans), sans-serif; }
+  .kpi-delta { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2.5px 7px; border-radius: 20px; }
+  .kpi-delta.up { background: rgba(74,222,128,.12); color: #16A34A; }
+  .kpi-delta.down { background: rgba(220,38,38,.10); color: #DC2626; }
+  .kpi-delta.flat { background: rgba(122,106,96,.10); color: #7A6A60; }
+  .kpi-prev { font-size: 11px; color: #7A6A60; margin-left: 6px; }
+  .kpi-goalbar { margin-top: 11px; height: 5px; background: #EEE7DC; border-radius: 4px; overflow: hidden; }
+  .kpi-goalbar > div { height: 100%; background: #C96A5A; border-radius: 4px; }
+  .kpi-goaltext { font-size: 11px; color: #7A6A60; margin-top: 6px; }
+
+  /* Funnel */
+  .funnel-wrap { display: flex; flex-direction: column; gap: 10px; }
+  .funnel-labels { display: grid; grid-template-columns: 150px 1fr 90px 78px 78px; gap: 14px; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: #7A6A60; font-weight: 600; padding: 0 0 2px 0; }
+  .funnel-stage { display: grid; grid-template-columns: 150px 1fr 90px 78px 78px; align-items: center; gap: 14px; }
+  .funnel-name { font-size: 13px; font-weight: 600; color: #2A1F1A; }
+  .funnel-name small { display: block; font-weight: 400; color: #7A6A60; font-size: 11px; margin-top: 2px; }
+  .funnel-track { background: #EEE7DC; border-radius: 8px; height: 30px; position: relative; overflow: hidden; }
+  .funnel-fill { height: 100%; border-radius: 8px; display: flex; align-items: center; padding-left: 12px; color: #fff; font-size: 12.5px; font-weight: 700; font-family: 'JetBrains Mono', monospace; transition: width .5s; }
+  .funnel-conv { font-size: 12.5px; font-weight: 700; text-align: right; color: #2A1F1A; }
+  .funnel-drop { font-size: 12px; color: #7A6A60; text-align: right; }
+  .funnel-conv.pos { color: #3E7A55; }
+  .funnel-conv.neg { color: #BE4A3C; }
+
+  /* Priority cards */
+  .prio-card { border-radius: 14px; padding: 16px 17px; border: 1px solid #D4CBC0; }
+  .prio-card.high { background: #F8EBE7; border-color: #EAD1C8; }
+  .prio-card.medium { background: #F8F0E1; border-color: #EBDBBB; }
+  .prio-card.low { background: #EFF3ED; border-color: #D8E3D9; }
+  .prio-head { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13px; margin-bottom: 12px; color: #2A1F1A; }
+  .prio-head .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .prio-head.high .dot { background: #BE4A3C; }
+  .prio-head.medium .dot { background: #B9822E; }
+  .prio-head.low .dot { background: #8B8074; }
+  .prio-stat { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed rgba(27,20,15,0.08); }
+  .prio-stat:last-child { border-bottom: none; }
+  .prio-stat span { font-size: 11.5px; color: #6B4C4C; }
+  .prio-stat b { font-family: var(--font-playfair), serif; font-size: 17px; font-weight: 600; color: #2A1F1A; }
+
+  /* Mini priority funnels */
+  .mini-funnel { margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(27,20,15,0.1); }
+  .mini-stage { display: grid; grid-template-columns: 76px 1fr 32px; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .mini-stage:last-child { margin-bottom: 0; }
+  .mini-stage .ms-label { font-size: 10.5px; color: #6B4C4C; font-weight: 600; }
+  .mini-stage .ms-track { height: 16px; background: rgba(27,20,15,0.06); border-radius: 5px; overflow: hidden; }
+  .mini-stage .ms-fill { height: 100%; border-radius: 5px; transition: width .5s; }
+  .mini-stage .ms-val { font-size: 11px; font-weight: 700; text-align: right; font-family: 'JetBrains Mono', monospace; color: #2A1F1A; }
+
+  /* Tables */
+  .table-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .filter-pills { display: flex; gap: 6px; }
+  .filter-pill { border: 1px solid #D4CBC0; background: #FFFFFF; padding: 6px 13px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; color: #6B4C4C; }
+  .filter-pill.active { background: #2A1F1A; color: #F2EDE8; border-color: #2A1F1A; }
+  .table-scroll { overflow-x: auto; border: 1px solid #D4CBC0; border-radius: 14px; }
+  .table-scroll table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 900px; }
+  .table-scroll thead th { text-align: left; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: #7A6A60; font-weight: 600; padding: 11px 14px; background: #FBF8F4; border-bottom: 1px solid #D4CBC0; white-space: nowrap; }
+  .table-scroll tbody td { padding: 11px 14px; border-bottom: 1px solid #EEE7DC; white-space: nowrap; color: #2A1F1A; }
+  .table-scroll tbody tr:last-child td { border-bottom: none; }
+  .table-scroll tbody tr:hover { background: #FBF8F4; }
+  .tname { font-weight: 600; }
+  .tsub { color: #7A6A60; font-size: 11.5px; }
+  .badge { display: inline-flex; padding: 2.5px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .badge.high { background: #F5DDD6; color: #BE4A3C; }
+  .badge.medium { background: #F3E6CC; color: #B9822E; }
+  .badge.low { background: #EEE7DC; color: #8B8074; }
+  .badge.status { background: #DEE5F0; color: #3D5A8C; }
+  .yes { color: #3E7A55; font-weight: 700; }
+  .no { color: #8B8074; }
+  .sla-met { color: #3E7A55; font-weight: 600; }
+  .sla-risk { color: #B9822E; font-weight: 600; }
+  .sla-breach { color: #BE4A3C; font-weight: 600; }
+
+  /* Channel breakdown */
+  .chan-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+  .chan-card { background: #FFFFFF; border: 1px solid #D4CBC0; border-radius: 13px; padding: 14px 15px; box-shadow: 0 4px 20px rgba(40,20,10,.04); }
+  .chan-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .chan-name { font-size: 12px; font-weight: 600; color: #6B4C4C; }
+  .chan-pct { font-size: 11px; color: #7A6A60; }
+  .chan-val { font-family: var(--font-playfair), serif; font-size: 22px; font-weight: 500; margin-bottom: 8px; color: #2A1F1A; }
+  .chan-bar { height: 5px; background: #EEE7DC; border-radius: 4px; overflow: hidden; }
+  .chan-bar > div { height: 100%; background: #C96A5A; }
+
+  /* Action Required panel */
+  .action-panel { background: #FFFFFF; border: 1px solid #D4CBC0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(40,20,10,.04); }
+  .action-item { display: grid; grid-template-columns: 20px 1fr 90px; align-items: center; gap: 14px; padding: 13px 20px; border-bottom: 1px solid #EEE7DC; }
+  .action-item:last-child { border-bottom: none; }
+  .action-item:hover { background: #FBF8F4; }
+  .action-sev { width: 9px; height: 9px; border-radius: 50%; justify-self: center; }
+  .action-sev.red { background: #BE4A3C; }
+  .action-sev.amber { background: #B9822E; }
+  .action-text { font-size: 12.8px; color: #6B4C4C; line-height: 1.4; }
+  .action-text b { font-weight: 700; }
+  .action-count { font-family: var(--font-playfair), serif; font-size: 15px; color: #2A1F1A; font-weight: 600; }
+
+  /* Aging buckets */
+  .aging-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; }
+  .aging-card { border-radius: 13px; padding: 14px 15px; text-align: center; border: 1px solid #D4CBC0; }
+  .aging-card.safe { background: #EAF2EB; border-color: #CFE1D2; }
+  .aging-card.warn { background: #F8F0E1; border-color: #EBDBBB; }
+  .aging-card.risk { background: #F8EBE7; border-color: #EAD1C8; }
+  .aging-bucket { font-size: 11px; color: #7A6A60; font-weight: 600; margin-bottom: 8px; }
+  .aging-count { font-family: var(--font-playfair), serif; font-size: 26px; font-weight: 500; margin-bottom: 6px; color: #2A1F1A; }
+  .aging-pct { font-size: 11px; color: #7A6A60; }
+
+  /* Funnel leakage cards */
+  .leak-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+  .leak-card { background: #FFFFFF; border: 1px solid #D4CBC0; border-radius: 13px; padding: 14px 15px; position: relative; }
+  .leak-card.worst { border-color: #BE4A3C; background: #F5DDD6; }
+  .leak-stages { font-size: 11px; font-weight: 700; color: #6B4C4C; margin-bottom: 10px; }
+  .leak-lost { font-family: var(--font-playfair), serif; font-size: 22px; font-weight: 500; margin-bottom: 4px; color: #2A1F1A; }
+  .leak-lost small { font-size: 12px; font-weight: 400; color: #7A6A60; font-family: var(--font-dm-sans), sans-serif; }
+  .leak-drop { font-size: 11.5px; font-weight: 700; color: #BE4A3C; }
+  .leak-badge { position: absolute; top: -9px; right: 10px; background: #BE4A3C; color: #fff; font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px; letter-spacing: .03em; }
+
+  /* WoW compare highlight */
+  .wow-up { color: #3E7A55; font-weight: 700; }
+  .wow-down { color: #BE4A3C; font-weight: 700; }
+  .wow-flat { color: #7A6A60; font-weight: 600; }
+
+  /* Bar chart (raw div-based, matches reference's 8-Week/Pipeline trend charts) */
+  .bar-chart { display: flex; align-items: flex-end; gap: 10px; height: 170px; padding-top: 6px; }
+  .bar-chart .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+  .bar-chart .bar { width: 60%; border-radius: 6px 6px 3px 3px; background: #C96A5A; position: relative; transition: height .4s; }
+  .bar-chart .bar-val { font-size: 10.5px; font-weight: 700; margin-bottom: 5px; color: #2A1F1A; font-family: 'JetBrains Mono', monospace; }
+  .bar-chart .bar-lbl { font-size: 10.5px; color: #7A6A60; margin-top: 8px; }
+  .legend { display: flex; gap: 16px; font-size: 11.5px; color: #7A6A60; margin-top: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 14px; height: 2.5px; border-radius: 2px; display: inline-block; }
+
+  @media (max-width: 1100px) {
+    .row-3, .row-4, .row-6 { grid-template-columns: repeat(2,1fr); }
+    .chan-grid, .aging-grid, .leak-grid { grid-template-columns: repeat(2,1fr); }
+  }
+}
