@@ -258,7 +258,7 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     key: 'git-agent',
-    label: 'OSS',
+    label: 'GSI/SI',
     description: 'Open source metrics — stars, spend, and tasks',
     metrics: [
       { key: 'total_stars', label: 'Total Stars', unit: 'number' },
