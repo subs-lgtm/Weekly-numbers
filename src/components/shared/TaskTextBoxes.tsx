@@ -18,6 +18,7 @@ type Props = {
   thisWeekKey?: string
   lastWeekLabel?: string
   thisWeekLabel?: string
+  showRating?: boolean
 }
 
 type TaskItem = {
@@ -408,6 +409,7 @@ export function TaskTextBoxes({
   thisWeekKey = 'tasks_this_week',
   lastWeekLabel = 'Done Last Week',
   thisWeekLabel = 'To Do This Week',
+  showRating = true,
 }: Props) {
   const { user } = useAuth()
   const { data, saveMetric } = useWeeklyMetrics(sectionKey, weekStart)
@@ -473,13 +475,15 @@ export function TaskTextBoxes({
       }}
     >
       {/* Domain Rating Slider */}
-      <div className="mb-5">
-        <DomainRatingSlider
-          sectionKey={sectionKey}
-          weekStart={weekStart}
-          sectionLabel={SECTION_MAP[sectionKey]?.label}
-        />
-      </div>
+      {showRating && (
+        <div className="mb-5">
+          <DomainRatingSlider
+            sectionKey={sectionKey}
+            weekStart={weekStart}
+            sectionLabel={SECTION_MAP[sectionKey]?.label}
+          />
+        </div>
+      )}
 
       <div className="flex gap-[20px] flex-col lg:flex-row">
         <RemindersPanel

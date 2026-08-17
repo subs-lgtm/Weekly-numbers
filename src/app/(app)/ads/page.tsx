@@ -13,8 +13,8 @@ export default function Page() {
   return (
     <SectionShell title={section.label} description={section.description}>
       <div className="space-y-6">
-        <TaskTextBoxes sectionKey="ads" weekStart={weekStart} lastWeekKey="tasks_last_week" thisWeekKey="tasks_this_week" />
-        <div className="rounded-[20px] border border-[#D4CBC0] overflow-hidden shadow-[0_4px_20px_rgba(40,20,10,.07)]" style={{ height: 'calc(100vh - 280px)' }}>
+        <TaskTextBoxes sectionKey="ads" weekStart={weekStart} lastWeekKey="tasks_last_week" thisWeekKey="tasks_this_week" showRating={false} />
+        <div className="rounded-[20px] border border-[#D4CBC0] overflow-hidden shadow-[0_4px_20px_rgba(40,20,10,.07)]" style={{ height: 'calc(100vh - 160px)' }}>
           <iframe
             src={EMBED_URL}
             className="w-full h-full"
