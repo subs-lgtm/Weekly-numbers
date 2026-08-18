@@ -1,8 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { DomainRatingSlider } from '@/components/shared/DomainRatingSlider'
-import { useWeek } from '@/lib/week-context'
 import { RefreshCw, ChevronDown, ChevronUp, Target, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -133,7 +131,6 @@ function OKRCard({ okr, index }: { okr: OKRRow; index: number }) {
 }
 
 export function OKRSection() {
-  const { weekStart } = useWeek()
   const [okrs, setOkrs]         = useState<OKRRow[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
@@ -166,8 +163,6 @@ export function OKRSection() {
         <p className="caption">Objectives & Key Results — Q3 2026</p>
       </div>
       <div className="space-y-6">
-        <DomainRatingSlider sectionKey="okrs" weekStart={weekStart} sectionLabel="OKR's" />
-
         {/* Summary banner */}
         {!loading && okrs.length > 0 && (
           <div className="rounded-[20px] border border-[#D4CBC0] bg-[#F9F5F1] px-5 py-4 flex flex-wrap items-center gap-4">

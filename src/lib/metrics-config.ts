@@ -363,7 +363,7 @@ export const SECTIONS: SectionDef[] = [
   },
   {
     key: 'docs-tutorials',
-    label: 'Documentations & Tutorials',
+    label: 'DevRel & Documentations & Tutorials',
     description: 'Product docs, tutorials, how-to guides — tasks and updates',
     metrics: [],
   },
