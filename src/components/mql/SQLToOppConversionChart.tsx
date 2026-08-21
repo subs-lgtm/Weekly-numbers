@@ -71,7 +71,7 @@ export function SQLToOppConversionChart({ sectionKey, weekStart }: Props) {
       const promises = weekKeys.map(async (wk) => {
         const end = format(addWeeks(new Date(wk + 'T00:00:00'), 1), 'yyyy-MM-dd')
         try {
-          const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}`)
+          const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&nocache=1`)
           const data = await res.json()
           const sql = data.funnel?.sql || 0
           const opportunity = data.funnel?.opportunity || 0

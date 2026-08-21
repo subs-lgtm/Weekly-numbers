@@ -352,12 +352,9 @@ function MQLPageInner() {
           <div className="section-label">Trend Charts</div>
           <div className="row-2">
             <MQLWoWChart sectionKey="mqls" weekStart={weekStart} />
-            <MQLMTDChart sectionKey="mqls" weekStart={weekStart} />
-          </div>
-          <div className="row-2">
             <MQLToSQLConversionChart sectionKey="mqls" weekStart={weekStart} />
-            <SQLToOppConversionChart sectionKey="mqls" weekStart={weekStart} />
           </div>
+          <SQLToOppConversionChart sectionKey="mqls" weekStart={weekStart} />
 
           {/* 3. CHANNEL WISE BREAKDOWN */}
           {hubspotData?.by_source_category && (
@@ -397,12 +394,17 @@ function MQLPageInner() {
             <PriorityDetailsTable contactsByPriority={hubspotData.contacts_by_priority} dateRangeLabel={`${effectiveStart} → ${effectiveEnd}`} />
           )}
 
-          {/* 11. MQL AGING — closes the section */}
+          {/* 11. MQL AGING */}
           <div className="section-label">MQL Aging</div>
           <div className="section-sub">How long MQLs have sat without progressing to the next stage</div>
           {hubspotData?.contacts_by_priority && (
             <MQLAgingBuckets contactsByPriority={hubspotData.contacts_by_priority} />
           )}
+
+          {/* 12. MOM TREND — closes the section */}
+          <div className="section-label">MoM Trend</div>
+          <div className="section-sub">Month-over-month MQLs, goals vs actuals</div>
+          <MQLMTDChart sectionKey="mqls" weekStart={weekStart} />
         </div>
       )}
     </div>
