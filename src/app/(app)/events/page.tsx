@@ -5,7 +5,7 @@ import { SECTION_MAP } from '@/lib/metrics-config'
 import { DomainRatingSlider } from '@/components/shared/DomainRatingSlider'
 import { useWeek } from '@/lib/week-context'
 
-const EMBED_URL = 'https://eventsreporting.lovable.app'
+const EMBED_URL = 'https://events-performance-dashboard.vercel.app'
 
 export default function Page() {
   const { weekStart } = useWeek()
