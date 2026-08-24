@@ -78,7 +78,7 @@ export function MQLMTDChart({ sectionKey, weekStart }: Props) {
       // Fetch all months in parallel
       const promises = monthsConfig.map(async (m) => {
         try {
-          const res = await fetch(`/api/hubspot/mqls?start=${m.start}&end=${m.end}`)
+          const res = await fetch(`/api/hubspot/mqls?start=${m.start}&end=${m.end}&nocache=1`)
           const data = await res.json()
           return { month: m.label, 'Actual MQLs': data.total || 0, 'Goal MQLs': monthlyGoal }
         } catch {

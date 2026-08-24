@@ -126,7 +126,7 @@ export function MQLHubSpotData({ weekStart, queryStart, queryEnd, onData, includ
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/hubspot/mqls?start=${apiStart}&end=${apiEnd}${includePipeline ? '&includePipeline=1' : ''}`)
+      const res = await fetch(`/api/hubspot/mqls?start=${apiStart}&end=${apiEnd}${includePipeline ? '&includePipeline=1' : ''}&nocache=1`)
       const json = await res.json()
       if (json.error) throw new Error(json.error)
       setData(json)
