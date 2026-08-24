@@ -281,17 +281,32 @@ export async function GET(req: NextRequest) {
       bySourceDeals[key].sort((a, b) => b.amount - a.amount)
     }
 
-    // Q3 2026 (Jul-Sep) Progress — a narrower, same-quarter-velocity metric than "Open
-    // Pipeline (This Quarter)" above: only deals CREATED in Q3 that are ALSO expected to
-    // CLOSE in Q3 count here (matching the original pre-"All Time" methodology this dashboard
-    // used). Deliberately distinct from the plain Open Pipeline card, which counts any deal
-    // closing in Q3 regardless of when it was created — this one only credits pipeline that
-    // was both generated and is landing within the same quarter. Always computed from the
-    // full, unfiltered dataset, independent of the from/to filter applied above.
+    // Two distinct Q3 metrics, both computed from the full, unfiltered dataset (independent
+    // of the from/to filter above):
+    //
+    // 1. q3OpenOnly ("Open Pipeline (This Quarter)" card) — any still-open deal (any create
+    //    date) expected to CLOSE in Q3. The broad "what's left to land by Sep 30" view.
+    //
+    // 2. q3Cumulative/q3Data ("Q3 Progress" banner) — the narrower, same-quarter-velocity
+    //    metric this dashboard originally used: only deals CREATED in Q3 that are ALSO
+    //    expected to CLOSE in Q3. These must stay separate — conflating them was a bug
+    //    (both ended up showing the narrow figure) fixed here.
     const Q3_START_MS = new Date('2026-07-01T00:00:00.000Z').getTime()
     const Q3_END_MS   = new Date('2026-09-30T23:59:59.999Z').getTime()
     const q3Months = ['2026-07', '2026-08', '2026-09']
-    const q3ByMonth: Record<string, { open: number; won: number; count: number }> = {}
+
+    let q3OpenOnly = 0
+    for (const d of allDeals) {
+      const p = d.properties
+      if (!p.closedate) continue
+      const closeMs = new Date(p.closedate).getTime()
+      if (closeMs < Q3_START_MS || closeMs > Q3_END_MS) continue
+      const stage = p.dealstage || ''
+      if (CLOSED_WON_STAGE === stage || CLOSED_LOST_STAGES.has(stage)) continue
+      q3OpenOnly += parseFloat(p.amount || '0')
+    }
+
+    const q3ByCreateMonth: Record<string, { open: number; won: number; count: number }> = {}
     for (const d of allDeals) {
       const p = d.properties
       if (!p.closedate || !p.createdate) continue
@@ -301,15 +316,15 @@ export async function GET(req: NextRequest) {
       if (!q3Months.includes(createMonthKey)) continue
       const stage = p.dealstage || ''
       const amount = parseFloat(p.amount || '0')
-      if (!q3ByMonth[createMonthKey]) q3ByMonth[createMonthKey] = { open: 0, won: 0, count: 0 }
-      q3ByMonth[createMonthKey].count++
-      if (stage === CLOSED_WON_STAGE) q3ByMonth[createMonthKey].won += amount
-      else if (!CLOSED_LOST_STAGES.has(stage)) q3ByMonth[createMonthKey].open += amount
+      if (!q3ByCreateMonth[createMonthKey]) q3ByCreateMonth[createMonthKey] = { open: 0, won: 0, count: 0 }
+      q3ByCreateMonth[createMonthKey].count++
+      if (stage === CLOSED_WON_STAGE) q3ByCreateMonth[createMonthKey].won += amount
+      else if (!CLOSED_LOST_STAGES.has(stage)) q3ByCreateMonth[createMonthKey].open += amount
     }
     const q3Goal = 30_000_000
     let q3Cumulative = 0
     const q3Data = q3Months.map(m => {
-      const monthData = q3ByMonth[m] || { open: 0, won: 0, count: 0 }
+      const monthData = q3ByCreateMonth[m] || { open: 0, won: 0, count: 0 }
       q3Cumulative += monthData.open + monthData.won
       return {
         month: m,
@@ -321,9 +336,6 @@ export async function GET(req: NextRequest) {
         deals: monthData.count,
       }
     })
-    // Still-open pipeline only (excludes Closed Won) expected to close in Q3 — what's left
-    // to still land, not what's already been won so far this quarter.
-    const q3OpenOnly = q3Months.reduce((sum, m) => sum + (q3ByMonth[m]?.open || 0), 0)
 
     // Monthly trend (last 6 months)
     const sortedMonths = Object.entries(byMonth)

@@ -155,8 +155,11 @@ export function OpportunityACVChart() {
   if (!data) return null
 
   const q3Goal = data.q3.goal
+  // Open Pipeline (This Quarter) card: any still-open deal closing in Q3, any create date.
   const q3OpenOnly = data.q3.openOnly
-  const q3Progress = ((q3OpenOnly / q3Goal) * 100).toFixed(1)
+  // Q3 Progress banner: narrower, same-quarter-velocity figure — created in Q3 AND closing
+  // in Q3 — deliberately different from q3OpenOnly above.
+  const q3Progress = ((data.q3.cumulative / q3Goal) * 100).toFixed(1)
   const monthlyGoal = q3Goal / 3
 
   const chartData = data.monthlyTrend.map(m => ({
@@ -264,7 +267,8 @@ export function OpportunityACVChart() {
         </div>
 
         {/* Q3 Progress — a separate insight, not one of the pipeline metric cards above.
-            Open-only (excludes Closed Won): what's still left to close in Q3 toward the goal. */}
+            Same-quarter velocity: only deals created in Q3 AND closing in Q3, deliberately
+            narrower than the "Open Pipeline (This Quarter)" card above (q3OpenOnly). */}
         <div className="rounded-[14px] border-2 border-[#D97706] p-4 mb-6"
           style={{ background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 40%, #FFF7ED 100%)', boxShadow: '0 4px 20px rgba(217,119,6,.18)' }}>
           <div className="flex items-center justify-between mb-2">
@@ -275,7 +279,7 @@ export function OpportunityACVChart() {
             <span className="text-[11px] font-[700] text-[#D97706] bg-white/70 rounded-full px-2 py-0.5">{q3Progress}%</span>
           </div>
           <div className="flex items-baseline gap-1 mb-2.5">
-            <span className="text-[22px] font-[800] text-[#92400E]">{formatCurrency(q3OpenOnly)}</span>
+            <span className="text-[22px] font-[800] text-[#92400E]">{formatCurrency(data.q3.cumulative)}</span>
             <span className="text-[14px] font-[500] text-[#B45309]">/</span>
             <span className="text-[16px] font-[700] text-[#B45309]">{formatCurrency(q3Goal)}</span>
           </div>
