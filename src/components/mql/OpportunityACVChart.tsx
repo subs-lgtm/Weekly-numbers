@@ -17,6 +17,7 @@ type DealData = {
     goal: number
     data: Array<{ month: string; label: string; added: number; cumulative: number; open: number; won: number; deals: number }>
     cumulative: number
+    openOnly: number
   }
   monthlyTrend: Array<{ month: string; label: string; open: number; won: number; total: number; cumulative: number; deals: number }>
   topDeals: Array<{ name: string; amount: number; stage: string; closeDate: string; created: string; company: string; source: string }>
@@ -154,7 +155,8 @@ export function OpportunityACVChart() {
   if (!data) return null
 
   const q3Goal = data.q3.goal
-  const q3Progress = ((data.q3.cumulative / q3Goal) * 100).toFixed(1)
+  const q3OpenOnly = data.q3.openOnly
+  const q3Progress = ((q3OpenOnly / q3Goal) * 100).toFixed(1)
   const monthlyGoal = q3Goal / 3
 
   const chartData = data.monthlyTrend.map(m => ({
@@ -255,15 +257,14 @@ export function OpportunityACVChart() {
           <div className="rounded-[12px] border border-[#D4CBC0] bg-[#F9F5F1] p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <Target className="h-3 w-3 text-[#D97706]" />
-              <span className="text-[10px] text-[#7A6A60] uppercase tracking-wide">This Quarter</span>
+              <span className="text-[10px] text-[#7A6A60] uppercase tracking-wide">Open Pipeline (This Quarter)</span>
             </div>
-            <p className="text-[20px] font-[700] text-[#2A1F1A]">
-              {formatCurrency(data.q3.cumulative)} <span className="text-[13px] font-[500] text-[#7A6A60]">/ {formatCurrency(q3Goal)}</span>
-            </p>
+            <p className="text-[20px] font-[700] text-[#2A1F1A]">{formatCurrency(q3OpenOnly)}</p>
           </div>
         </div>
 
-        {/* Q3 Progress — a separate insight, not one of the pipeline metric cards above */}
+        {/* Q3 Progress — a separate insight, not one of the pipeline metric cards above.
+            Open-only (excludes Closed Won): what's still left to close in Q3 toward the goal. */}
         <div className="rounded-[14px] border-2 border-[#D97706] p-4 mb-6"
           style={{ background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 40%, #FFF7ED 100%)', boxShadow: '0 4px 20px rgba(217,119,6,.18)' }}>
           <div className="flex items-center justify-between mb-2">
@@ -274,7 +275,7 @@ export function OpportunityACVChart() {
             <span className="text-[11px] font-[700] text-[#D97706] bg-white/70 rounded-full px-2 py-0.5">{q3Progress}%</span>
           </div>
           <div className="flex items-baseline gap-1 mb-2.5">
-            <span className="text-[22px] font-[800] text-[#92400E]">{formatCurrency(data.q3.cumulative)}</span>
+            <span className="text-[22px] font-[800] text-[#92400E]">{formatCurrency(q3OpenOnly)}</span>
             <span className="text-[14px] font-[500] text-[#B45309]">/</span>
             <span className="text-[16px] font-[700] text-[#B45309]">{formatCurrency(q3Goal)}</span>
           </div>

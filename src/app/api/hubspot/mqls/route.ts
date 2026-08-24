@@ -160,62 +160,17 @@ export async function GET(req: NextRequest) {
       apiKey,
       mode === 'all'
         ? [{ filters: [...dateFilters, { propertyName: 'lead_form_type', operator: 'HAS_PROPERTY' }] }] // All leads with any form type
-        : [{ filters: [...dateFilters, { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' }] },
-           { filters: [...dateFilters, { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Email Form' }] },
-           { filters: [...dateFilters, { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'GSI and SI' }] },
-           { filters: [...dateFilters, { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Accenture' }] }],
+        : [{ filters: [...dateFilters, { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' }] }],
       CONTACT_PROPERTIES,
     )
 
-    // SDR-backfilled leads (entered directly into HubSpot, never through a marketing form) have
-    // no lead_form_type, so the search above structurally can't see them. Broadening the base
-    // query to "any contact missing lead_form_type" was tried and reverted — within some weeks
-    // that pulled in thousands of unrelated bulk-imported/synced contacts (Total MQLs spiked to
-    // 3,967 in testing). Instead, only the specific verified SDR leads are merged in by ID, kept
-    // in their correct week via their real createdate — no risk of catching unrelated contacts.
-    const KNOWN_SDR_BACKFILL_IDS = [
-      '238937083235', // Chinaza Okpechi — Northern Trust
-      '243363553069', // Celina Georgeadis — T-Mobile
-      '238791426823', // Jeff Mikula — Coffee + Dunn
-      '228441152383', // Juergen Sergeant — Colruyt Group
-      '195487370882', // Michael Bayer — Wasabi
-      '238244100972', // Nino Obach — SweldoMo Software
-      '220162180252', // Aditya Arora — BridgeNext
-      '243310324600', // Manuel A. Casas — Course5i
-      '241511041832', // Yusra Mahmood — Nazztec
-      '243363724359', // Bo White — AlignXGlobal
-      '235640751682', // John Kennedy — Actual.Ai
-      '65300007351',  // Arpit Ahuja — Medicto
-      '150935578902', // Kris B — NeXera Technologies
-      '194676488476', // Jeffrey Taylor — Never Lose Money Strategy
-      '45236939173',  // Kunal Verma — Apexal / infrahive.io
-      '237903011106', // Terry Ng — Chow Tai Fook
-      '141097453904', // Mihir Mehta — Celestite
-    ]
-    let sdrBackfillContacts: any[] = []
-    if (mode !== 'all') {
-      try {
-        const res = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/batch/read`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ properties: CONTACT_PROPERTIES, inputs: KNOWN_SDR_BACKFILL_IDS.map(id => ({ id })) }),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          // Only keep the ones whose real createdate actually falls in the week/month being
-          // queried — otherwise every one of these 17 would double-count into every period.
-          sdrBackfillContacts = (data.results || []).filter((c: any) => {
-            const created = new Date(c.properties?.createdate || 0).getTime()
-            return created >= startMs && created < endMs
-          })
-        }
-      } catch { /* non-blocking — falls back to the base search result if this fails */ }
-    }
-
-    // Deduplicate by contact ID
+    // MQLs are strictly marketing-channel leads (lead_form_type = Book a Demo). Contacts
+    // entered directly by SDRs/ops (offline imports, no lead_form_type) are intentionally
+    // excluded here — they didn't come through a marketing form, so they aren't MQLs by this
+    // dashboard's definition, regardless of how they're later qualified in HubSpot.
     const seen = new Set<string>()
     const contacts: any[] = []
-    for (const c of [...bookDemoContacts, ...sdrBackfillContacts]) {
+    for (const c of bookDemoContacts) {
       if (!seen.has(c.id)) {
         seen.add(c.id)
         contacts.push(c)

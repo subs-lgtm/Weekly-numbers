@@ -316,6 +316,9 @@ export async function GET(req: NextRequest) {
         deals: monthData.count,
       }
     })
+    // Still-open pipeline only (excludes Closed Won) expected to close in Q3 — what's left
+    // to still land, not what's already been won so far this quarter.
+    const q3OpenOnly = q3Months.reduce((sum, m) => sum + (q3ByMonth[m]?.open || 0), 0)
 
     // Monthly trend (last 6 months)
     const sortedMonths = Object.entries(byMonth)
@@ -345,7 +348,7 @@ export async function GET(req: NextRequest) {
       closedWon,
       closedLost,
       totalACV: openPipeline + closedWon,
-      q3: { goal: q3Goal, data: q3Data, cumulative: q3Cumulative },
+      q3: { goal: q3Goal, data: q3Data, cumulative: q3Cumulative, openOnly: q3OpenOnly },
       byStage: Object.entries(byStage)
         .sort((a, b) => b[1].amount - a[1].amount)
         .map(([stage, data]) => ({ stage, ...data })),

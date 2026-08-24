@@ -200,7 +200,7 @@ export function MQLHubSpotData({ weekStart, queryStart, queryEnd, onData, includ
             <Zap className="h-3.5 w-3.5 text-[#6B4C4C]" />
           </div>
           <div>
-            <p className="eyebrow">Live from HubSpot · Book a Demo + Email Form</p>
+            <p className="eyebrow">Live from HubSpot · Book a Demo</p>
             <p className="text-[11px] text-[#7A6A60]">
               {apiStart} → {apiEnd} · excludes @lyzr.ai · total &amp; qualified auto-populate scorecards
             </p>

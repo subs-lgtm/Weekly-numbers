@@ -5,7 +5,7 @@ import { SECTION_MAP } from '@/lib/metrics-config'
 import { DomainRatingSlider } from '@/components/shared/DomainRatingSlider'
 import { useWeek } from '@/lib/week-context'
 
-const EMBED_URL = 'https://claude.ai/public/artifacts/59a7bfdc-82f7-4c75-b233-40435f54213a'
+const EMBED_URL = 'https://eventsreporting.lovable.app'
 
 export default function Page() {
   const { weekStart } = useWeek()
