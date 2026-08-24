@@ -79,10 +79,12 @@ function sourceDot(source: string) {
 }
 
 export function OpportunityACVChart() {
-  const defaultQ = currentQuarterBounds()
-  const [filterFrom, setFilterFrom] = useState(defaultQ.from)
-  const [filterTo,   setFilterTo]   = useState(defaultQ.to)
-  const [filterLabel, setFilterLabel] = useState(defaultQ.label)
+  // Defaults to the overall pipeline (every deal ever generated, no closedate filter) —
+  // "This Quarter" is available as an optional narrower view via the filter button. The
+  // Q3 Progress goal card always reflects Q3 regardless of this filter either way.
+  const [filterFrom, setFilterFrom] = useState('')
+  const [filterTo,   setFilterTo]   = useState('')
+  const [filterLabel, setFilterLabel] = useState('All Time')
   const [showFilter, setShowFilter] = useState(false)
   const [data, setData] = useState<DealData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -93,7 +95,10 @@ export function OpportunityACVChart() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/hubspot/deals-acv?from=${from}&to=${to}`)
+      const params = new URLSearchParams()
+      if (from) params.set('from', from)
+      if (to) params.set('to', to)
+      const res = await fetch(`/api/hubspot/deals-acv?${params.toString()}`)
       const json = await res.json()
       if (json.error) throw new Error(json.error)
       setData(json)
@@ -118,6 +123,14 @@ export function OpportunityACVChart() {
     setFilterLabel(q.label)
     setShowFilter(false)
     fetchData(q.from, q.to)
+  }
+
+  const resetToAllTime = () => {
+    setFilterFrom('')
+    setFilterTo('')
+    setFilterLabel('All Time')
+    setShowFilter(false)
+    fetchData('', '')
   }
 
   if (loading) {
@@ -196,6 +209,10 @@ export function OpportunityACVChart() {
                     className="flex-1 rounded-full bg-[#6B4C4C] text-white text-[11px] py-1.5 font-[600] hover:opacity-90">
                     Apply
                   </button>
+                  <button onClick={resetToAllTime}
+                    className="flex-1 rounded-full border border-[#D4CBC0] text-[#6B4C4C] text-[11px] py-1.5 font-[500] hover:bg-[#F2EDE8]">
+                    All Time
+                  </button>
                   <button onClick={resetToQuarter}
                     className="flex-1 rounded-full border border-[#D4CBC0] text-[#6B4C4C] text-[11px] py-1.5 font-[500] hover:bg-[#F2EDE8]">
                     This Quarter
@@ -212,8 +229,8 @@ export function OpportunityACVChart() {
       </div>
 
       <div className="p-5">
-        {/* Scorecards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {/* Scorecards — active pipeline metrics, all plain (Q3 Progress moved below as its own insight) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="rounded-[12px] border border-[#D4CBC0] bg-[#F9F5F1] p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <DollarSign className="h-3 w-3 text-[#16A34A]" />
@@ -231,33 +248,44 @@ export function OpportunityACVChart() {
           <div className="rounded-[12px] border border-[#D4CBC0] bg-[#F9F5F1] p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <TrendingUp className="h-3 w-3 text-[#6B4C4C]" />
-              <span className="text-[10px] text-[#7A6A60] uppercase tracking-wide">Total ACV</span>
+              <span className="text-[10px] text-[#7A6A60] uppercase tracking-wide">Overall Pipeline</span>
             </div>
             <p className="text-[20px] font-[700] text-[#2A1F1A]">{formatCurrency(data.totalACV)}</p>
           </div>
-          <div className="rounded-[14px] border-2 border-[#D97706] p-4 col-span-2 md:col-span-1"
-            style={{ background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 40%, #FFF7ED 100%)', boxShadow: '0 4px 20px rgba(217,119,6,.18)' }}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <Target className="h-3.5 w-3.5 text-[#D97706]" />
-                <span className="text-[10px] font-[700] text-[#92400E] uppercase tracking-wider">Q3 Progress</span>
-              </div>
-              <span className="text-[11px] font-[700] text-[#D97706] bg-white/70 rounded-full px-2 py-0.5">{q3Progress}%</span>
+          <div className="rounded-[12px] border border-[#D4CBC0] bg-[#F9F5F1] p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Target className="h-3 w-3 text-[#D97706]" />
+              <span className="text-[10px] text-[#7A6A60] uppercase tracking-wide">This Quarter</span>
             </div>
-            <div className="flex items-baseline gap-1 mb-2.5">
-              <span className="text-[22px] font-[800] text-[#92400E]">{formatCurrency(data.q3.cumulative)}</span>
-              <span className="text-[14px] font-[500] text-[#B45309]">/</span>
-              <span className="text-[16px] font-[700] text-[#B45309]">{formatCurrency(q3Goal)}</span>
-            </div>
-            {/* Progress bar */}
-            <div className="h-2 rounded-full bg-white/60 overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${Math.min(parseFloat(q3Progress), 100)}%`, background: 'linear-gradient(90deg, #D97706, #F59E0B)' }}
-              />
-            </div>
-            <p className="text-[10px] text-[#92400E] mt-1.5 font-[500]">{(100 - parseFloat(q3Progress)).toFixed(1)}% remaining to goal</p>
+            <p className="text-[20px] font-[700] text-[#2A1F1A]">
+              {formatCurrency(data.q3.cumulative)} <span className="text-[13px] font-[500] text-[#7A6A60]">/ {formatCurrency(q3Goal)}</span>
+            </p>
           </div>
+        </div>
+
+        {/* Q3 Progress — a separate insight, not one of the pipeline metric cards above */}
+        <div className="rounded-[14px] border-2 border-[#D97706] p-4 mb-6"
+          style={{ background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 40%, #FFF7ED 100%)', boxShadow: '0 4px 20px rgba(217,119,6,.18)' }}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <Target className="h-3.5 w-3.5 text-[#D97706]" />
+              <span className="text-[10px] font-[700] text-[#92400E] uppercase tracking-wider">Q3 Progress</span>
+            </div>
+            <span className="text-[11px] font-[700] text-[#D97706] bg-white/70 rounded-full px-2 py-0.5">{q3Progress}%</span>
+          </div>
+          <div className="flex items-baseline gap-1 mb-2.5">
+            <span className="text-[22px] font-[800] text-[#92400E]">{formatCurrency(data.q3.cumulative)}</span>
+            <span className="text-[14px] font-[500] text-[#B45309]">/</span>
+            <span className="text-[16px] font-[700] text-[#B45309]">{formatCurrency(q3Goal)}</span>
+          </div>
+          {/* Progress bar */}
+          <div className="h-2 rounded-full bg-white/60 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${Math.min(parseFloat(q3Progress), 100)}%`, background: 'linear-gradient(90deg, #D97706, #F59E0B)' }}
+            />
+          </div>
+          <p className="text-[10px] text-[#92400E] mt-1.5 font-[500]">{(100 - parseFloat(q3Progress)).toFixed(1)}% remaining to goal</p>
         </div>
 
         {/* Monthly ACV bar chart */}
