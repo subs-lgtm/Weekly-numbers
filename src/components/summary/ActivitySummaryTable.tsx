@@ -46,8 +46,16 @@ const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[] }[] =
   { key: 'cat-products', label: 'Products', sectionKeys: ['studio-signups', 'architect', 'lyzr-gpt'] },
   { key: 'cat-social', label: 'Social & Influencers', sectionKeys: ['social-influencers', 'reddit'] },
   { key: 'cat-website', label: 'Website', sectionKeys: ['pages', 'ui-ux', 'pr-news'] },
-  { key: 'cat-partners', label: 'Partners', sectionKeys: ['partners-emerging', 'partners-aws', 'partners-gsi'] },
+  // Partners theme — split into one card per owner instead of one merged card, but kept
+  // adjacent here (and flagged via PARTNERS_THEME_KEYS below) so they render as a themed
+  // sub-group under a shared "Partners" sub-header rather than 3 unrelated-looking cards.
+  { key: 'cat-partners-hyperscalers', label: 'Hyperscalers & Hardware', sectionKeys: ['partners-aws'] },
+  { key: 'cat-partners-emerging', label: 'Emerging Partners', sectionKeys: ['partners-emerging'] },
+  { key: 'cat-partners-gsi', label: 'GSI & SI', sectionKeys: ['partners-gsi'] },
 ]
+
+// The first key here gets a "Partners" sub-header rendered above it in the category list.
+const PARTNERS_THEME_FIRST_KEY = 'cat-partners-hyperscalers'
 
 export type ActivityItem = { key: string; label: string; sublabel?: string }
 
@@ -73,7 +81,7 @@ export function buildActivityItems(): ActivityItem[] {
 const OWNER_OPTIONS = [
   'Mothilal', 'Shreya', 'Shifa', 'Kailash',
   'Prince', 'Pranamya', 'Ani', 'Ankita',
-  'Vaibhavi', 'Kunj', 'Leonard', 'Vaibhav', 'Nirupam', 'Apoorva', 'Faraaz', 'Rida', 'Alma', 'Arnav',
+  'Vaibhavi', 'Kunj', 'Leonard', 'Vaibhav', 'Nirupam', 'Apoorva', 'Faraaz', 'Rida', 'Alma', 'Arnav', 'Anuskha',
 ]
 
 // Default owner per function — matches the reference mockup where a function was shown there.
@@ -94,6 +102,9 @@ const DEFAULT_OWNERS: Record<string, string> = {
   podcasts: 'Ani',
   'pr-news': 'Pranamya',
   'analyst-relations': 'Pranamya',
+  'cat-partners-hyperscalers': 'Anuskha',
+  'cat-partners-emerging': 'Apoorva',
+  'cat-partners-gsi': 'Kailash',
 }
 
 const STATUS_CONFIG: Record<ActivityStatus, { dot: string; label: string; rowBg: string }> = {
@@ -308,14 +319,20 @@ export function ActivitySummaryTable({ weekStart }: { weekStart: string }) {
       <div>
         <CategoryHeader label="Categories — one red, one yellow, one green line each" />
         {categoryItems.map(item => (
-          <CategoryCard
-            key={item.key}
-            label={item.label}
-            sublabel={item.sublabel}
-            entry={data[item.key]}
-            defaultOwner={DEFAULT_OWNERS[item.key] || ''}
-            onSave={(updates) => { void saveEntry(item.key, updates, user?.email || 'unknown') }}
-          />
+          <div key={item.key}>
+            {item.key === PARTNERS_THEME_FIRST_KEY && (
+              <div className="px-4 py-1 bg-white border-b border-[#EEE7DC] text-[9.5px] uppercase tracking-[.08em] font-[600] text-[#A99A8E]">
+                Partners
+              </div>
+            )}
+            <CategoryCard
+              label={item.label}
+              sublabel={item.sublabel}
+              entry={data[item.key]}
+              defaultOwner={DEFAULT_OWNERS[item.key] || ''}
+              onSave={(updates) => { void saveEntry(item.key, updates, user?.email || 'unknown') }}
+            />
+          </div>
         ))}
       </div>
 
