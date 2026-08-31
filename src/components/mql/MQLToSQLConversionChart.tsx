@@ -71,10 +71,18 @@ export function MQLToSQLConversionChart({ sectionKey, weekStart }: Props) {
       const promises = weekKeys.map(async (wk) => {
         const end = format(addWeeks(new Date(wk + 'T00:00:00'), 1), 'yyyy-MM-dd')
         try {
-          const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&nocache=1`)
-          const data = await res.json()
-          const mqls = data.total || 0
-          const sql = data.funnel?.sql || 0
+          // MQL total still comes from HubSpot (unchanged). SQL count comes from the SDR
+          // tracker sheet instead of HubSpot's lifecyclestage — SDRs mark a lead SQL there
+          // directly, often before (or without ever) updating the matching HubSpot property,
+          // so the sheet is the more complete source for this specific number.
+          const [mqlRes, sqlRes] = await Promise.all([
+            fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&nocache=1`),
+            fetch(`/api/sdr-sql-tracker?start=${wk}&end=${end}`),
+          ])
+          const mqlData = await mqlRes.json()
+          const sqlData = await sqlRes.json()
+          const mqls = mqlData.total || 0
+          const sql = sqlData.sql || 0
           const rate = mqls > 0 ? Math.round((sql / mqls) * 100) : 0
           return { week: format(new Date(wk + 'T00:00:00'), 'MMM d'), 'MQL → SQL %': rate, mqls, sql }
         } catch {
@@ -97,7 +105,7 @@ export function MQLToSQLConversionChart({ sectionKey, weekStart }: Props) {
     return (
       <div className={CARD}>
         <p className="eyebrow mb-4">WoW Trend — MQL → SQL %</p>
-        <p className="text-[13px] text-[#7A6A60]">Loading from HubSpot…</p>
+        <p className="text-[13px] text-[#7A6A60]">Loading from HubSpot &amp; SDR tracker…</p>
       </div>
     )
   }
@@ -105,7 +113,7 @@ export function MQLToSQLConversionChart({ sectionKey, weekStart }: Props) {
   return (
     <div className={CARD}>
       <p className="eyebrow mb-1">WoW Trend — MQL → SQL %</p>
-      <p className="text-[12px] text-[#7A6A60] mb-4">Hover each point for MQL &amp; SQL counts</p>
+      <p className="text-[12px] text-[#7A6A60] mb-4">Hover each point for MQL &amp; SQL counts · SQL from SDR tracker sheet</p>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 36, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid {...GRID} />

@@ -12,6 +12,7 @@ import { MQLWoWChart } from '@/components/mql/MQLWoWChart'
 import { MQLMTDChart } from '@/components/mql/MQLMTDChart'
 import { MQLToSQLConversionChart } from '@/components/mql/MQLToSQLConversionChart'
 import { SQLToOppConversionChart } from '@/components/mql/SQLToOppConversionChart'
+import { MQLPriorityTrendChart } from '@/components/mql/MQLPriorityTrendChart'
 import { MQLHubSpotData } from '@/components/mql/MQLHubSpotData'
 import { OpportunityACVChart } from '@/components/mql/OpportunityACVChart'
 import { ChannelBreakdownGrid } from '@/components/mql/ChannelBreakdownGrid'
@@ -355,6 +356,11 @@ function MQLPageInner() {
             <MQLToSQLConversionChart sectionKey="mqls" weekStart={weekStart} />
           </div>
           <SQLToOppConversionChart sectionKey="mqls" weekStart={weekStart} />
+          <div className="row-3">
+            <MQLPriorityTrendChart sectionKey="mqls" weekStart={weekStart} priority="high" />
+            <MQLPriorityTrendChart sectionKey="mqls" weekStart={weekStart} priority="medium" />
+            <MQLPriorityTrendChart sectionKey="mqls" weekStart={weekStart} priority="low" />
+          </div>
 
           {/* 3. CHANNEL WISE BREAKDOWN */}
           {hubspotData?.by_source_category && (

@@ -43,6 +43,17 @@ const STAGE_NAMES: Record<string, string> = {
 const CLOSED_LOST_STAGES = new Set(['982194450', '982194451']) // Closed Lost + Dropped
 const CLOSED_WON_STAGE = '982194449'
 
+// --- Executive Dashboard: Current Pipeline Snapshot (Section 2) ---
+// "Late-stage" = deals in the two stages immediately before Closed Won/Lost — Negotiation and
+// Legal & Contracts. Not an official HubSpot concept in this portal, a judgment call made for
+// this feature; revisit with the user if it doesn't match how Sales actually thinks about it.
+const LATE_STAGES = new Set(['982194447', '982194448']) // Negotiation, Legal & Contracts
+const STALLED_STAGE_ID = '1068884838' // existing "Stalled" stage — already in STAGE_NAMES above
+// Placeholder default — a deal counts as "stalled/aging" once it's open longer than this many
+// days, OR sits in the explicit "Stalled" stage. Tune with the user once they've seen real
+// numbers against it; not derived from any existing convention in this codebase.
+const AGING_THRESHOLD_DAYS = 45
+
 export const maxDuration = 120
 
 // Fetch associated company name for a deal
@@ -337,6 +348,72 @@ export async function GET(req: NextRequest) {
       }
     })
 
+    // --- Executive Dashboard: Current Pipeline Snapshot (Section 2) ---
+    // Deliberately computed from allDeals (unfiltered, always-current), never filteredDeals —
+    // this section is a live snapshot of the whole pipeline right now, not scoped to whatever
+    // from/to range the page's date picker happens to have selected. See CLAUDE.md's "Open
+    // Pipeline (This Quarter) vs Q3 Progress" gotcha for the same "two independent loops"
+    // principle this follows.
+    let openOpportunities = 0
+    let openPipelineValueSnapshot = 0
+    let lateStageCount = 0
+    let lateStageValue = 0
+    let stalledOrAgingCount = 0
+    let stalledOrAgingValue = 0
+    let totalOpenAgeDays = 0
+    const now = Date.now()
+    const stageDistribution: Record<string, { count: number; value: number }> = {}
+
+    for (const d of allDeals) {
+      const p = d.properties
+      const stage = p.dealstage || ''
+      const isClosed = stage === CLOSED_WON_STAGE || CLOSED_LOST_STAGES.has(stage)
+      if (isClosed) continue // open pipeline only
+
+      const amount = parseFloat(p.amount || '0')
+      openOpportunities++
+      openPipelineValueSnapshot += amount
+
+      const stageName = STAGE_NAMES[stage] || stage
+      if (!stageDistribution[stageName]) stageDistribution[stageName] = { count: 0, value: 0 }
+      stageDistribution[stageName].count++
+      stageDistribution[stageName].value += amount
+
+      if (LATE_STAGES.has(stage)) {
+        lateStageCount++
+        lateStageValue += amount
+      }
+
+      // ageDays is a pure elapsed-ms calculation (now - createdate), not a Y-M-D string
+      // comparison, so it's not subject to the IST/UTC date-parsing gotcha documented
+      // elsewhere in this file/CLAUDE.md — that pitfall is specifically about comparing two
+      // date-only strings across timezones, not elapsed-duration math. Don't "fix" this.
+      const createdMs = p.createdate ? new Date(p.createdate).getTime() : now
+      const ageDays = Math.floor((now - createdMs) / 86_400_000)
+      totalOpenAgeDays += ageDays
+
+      if (stage === STALLED_STAGE_ID || ageDays > AGING_THRESHOLD_DAYS) {
+        stalledOrAgingCount++
+        stalledOrAgingValue += amount
+      }
+    }
+
+    const avgOpportunityAgeDays = openOpportunities > 0 ? Math.round(totalOpenAgeDays / openOpportunities) : 0
+
+    const pipelineHealth = {
+      openOpportunities,
+      openPipelineValue: openPipelineValueSnapshot,
+      lateStageCount,
+      lateStageValue,
+      stalledOrAgingCount,
+      stalledOrAgingValue,
+      avgOpportunityAgeDays,
+      agingThresholdDays: AGING_THRESHOLD_DAYS,
+      stageDistribution: Object.entries(stageDistribution)
+        .sort((a, b) => b[1].value - a[1].value)
+        .map(([stage, v]) => ({ stage, ...v })),
+    }
+
     // Monthly trend (last 6 months)
     const sortedMonths = Object.entries(byMonth)
       .filter(([k]) => k !== 'unknown')
@@ -374,6 +451,7 @@ export async function GET(req: NextRequest) {
         .map(([source, v]) => ({ source, ...v, deals: bySourceDeals[source] || [] })),
       monthlyTrend,
       topDeals: top15,
+      pipelineHealth,
     })
   } catch (err: any) {
     console.error('[deals-acv] Error:', err.message)

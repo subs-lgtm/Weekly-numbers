@@ -247,10 +247,30 @@ export async function GET(req: NextRequest) {
     ])
     const DEMO_COMPLETED_STATUSES = new Set(['Demo Completed', 'Demo Completed - PLG'])
     const DEMO_NO_SHOW_STATUSES = new Set(['Demo no show'])
-    const SQL_STAGES = new Set(['salesqualifiedlead', 'opportunity', '249550600', 'customer'])
-    const OPP_STAGES = new Set(['249550600', 'customer'])
+    // In THIS portal, lifecyclestage's internal values map to custom display labels that don't
+    // match the internal names — confirmed directly against the portal's property definition:
+    //   lead                    -> "Lead"
+    //   marketingqualifiedlead  -> "MQL (Marketing Qualified Lead)"
+    //   opportunity             -> "SQL (Sales Qualified Lead)"   <- the literal "SQL" stage
+    //   249550600               -> "Opportunity"                  <- the literal "Opportunity" stage
+    //   242934529               -> "Discarded" (not a funnel stage at all)
+    //   customer                -> "Customer"
+    // SQL_EXACT/OPP_EXACT match only the contact's CURRENT stage (what the HubSpot UI's own
+    // "Lifecycle stage is [X]" filter does) -- a contact that has since progressed to
+    // Opportunity or Customer no longer counts as SQL here. This was deliberately chosen over
+    // a cumulative "SQL or beyond" count after a direct user comparison against HubSpot's UI
+    // (57 exact vs 75 cumulative for one month) -- see CLAUDE.md/context-handoff.md if either
+    // of those numbers looks off again, and confirm which definition is wanted before changing.
+    const SQL_EXACT = new Set(['opportunity'])
+    const OPP_EXACT = new Set(['249550600'])
+    // Cumulative "reached at least this stage" sets -- kept only for the lifecycle_stage_funnel
+    // leakage breakdown below (explicitly named "_plus"), where cumulative is the intended,
+    // correct semantics for a leakage/waterfall view. Do not use these for the primary
+    // funnel.sql/funnel.opportunity counts -- that was the bug that prompted this comment.
+    const SQL_STAGES_CUMULATIVE = new Set(['opportunity', '249550600', 'customer'])
+    const OPP_STAGES_CUMULATIVE = new Set(['249550600', 'customer'])
     // Any lifecyclestage beyond blank/lead — used for the pure lifecycle-stage leakage funnel
-    const MQL_PLUS_STAGES = new Set(['marketingqualifiedlead', 'salesqualifiedlead', 'opportunity', '249550600', 'customer'])
+    const MQL_PLUS_STAGES = new Set(['marketingqualifiedlead', 'opportunity', '249550600', 'customer'])
     // hs_lead_status progression for the lead-status leakage funnel (separate from lifecyclestage)
     // "Working or beyond" excludes fresh OPEN and disqualification exits (Junk Lead, UNQUALIFIED)
     const WORKING_OR_BEYOND_STATUSES = new Set([
@@ -333,8 +353,8 @@ export async function GET(req: NextRequest) {
       if (DEMO_BOOKED_STATUSES.has(status)) demoBooked++
       if (DEMO_COMPLETED_STATUSES.has(status)) demoCompleted++
       if (DEMO_NO_SHOW_STATUSES.has(status)) demoNoShow++
-      if (SQL_STAGES.has(stage)) sql++
-      if (OPP_STAGES.has(stage)) opportunity++
+      if (SQL_EXACT.has(stage)) sql++
+      if (OPP_EXACT.has(stage)) opportunity++
       if (stage === 'customer') customer++
       if (hasMeeting) meetingBooked++
 
@@ -346,8 +366,8 @@ export async function GET(req: NextRequest) {
 
       // Lifecycle-stage leakage funnel (pure lifecyclestage, independent of hs_lead_status)
       if (MQL_PLUS_STAGES.has(stage)) lifecycleMqlPlus++
-      if (SQL_STAGES.has(stage)) lifecycleSqlPlus++
-      if (OPP_STAGES.has(stage)) lifecycleOppPlus++
+      if (SQL_STAGES_CUMULATIVE.has(stage)) lifecycleSqlPlus++
+      if (OPP_STAGES_CUMULATIVE.has(stage)) lifecycleOppPlus++
       if (stage === 'customer') lifecycleCustomer++
 
       // Lead-status leakage funnel (pure hs_lead_status, independent of lifecyclestage)
@@ -369,9 +389,12 @@ export async function GET(req: NextRequest) {
         else bookDemoWebsite++
       }
 
-      // Determine the single mutually-exclusive bucket for this contact
+      // Determine the single mutually-exclusive bucket for this contact. Deliberately still
+      // cumulative here (not SQL_EXACT) -- this table has no separate Opportunity/Customer
+      // bucket, so an exact-match would misclassify an already-progressed contact as "New"
+      // instead of acknowledging they're qualified at least as far as SQL.
       let bucketKey = 'new'
-      if (SQL_STAGES.has(stage)) {
+      if (SQL_STAGES_CUMULATIVE.has(stage)) {
         bucketKey = 'sql'
       } else if (status === 'Junk Lead' || status === 'Unqualified' || status === 'UNQUALIFIED') {
         bucketKey = 'junk'
@@ -421,12 +444,17 @@ export async function GET(req: NextRequest) {
       if (!bySourceFunnel[src]) bySourceFunnel[src] = { total: 0, mql: 0, sql: 0, opportunity: 0, customer: 0, working: 0, pipelineValue: 0 }
       bySourceFunnel[src].total++
       if (['marketingqualifiedlead','opportunity','249550600','customer'].includes(stage)) bySourceFunnel[src].mql++
-      if (SQL_STAGES.has(stage)) {
-        bySourceFunnel[src].sql++
+      // Exact-stage counts per column (currently AT sql / AT opportunity / AT customer, not
+      // cumulative) so the three columns partition the qualified contacts rather than overlap.
+      if (SQL_EXACT.has(stage)) bySourceFunnel[src].sql++
+      if (OPP_EXACT.has(stage)) bySourceFunnel[src].opportunity++
+      if (stage === 'customer') bySourceFunnel[src].customer++
+      // Pipeline $ lookup stays scoped by the CUMULATIVE "SQL or beyond" set deliberately --
+      // an Opportunity/Customer-stage contact still has real pipeline value worth showing,
+      // narrowing this to exact-SQL-only would silently drop their deal value from the table.
+      if (SQL_STAGES_CUMULATIVE.has(stage)) {
         sqlPlusContactIds.push(c.id)
       }
-      if (OPP_STAGES.has(stage)) bySourceFunnel[src].opportunity++
-      if (stage === 'customer') bySourceFunnel[src].customer++
       if (status === 'Working') bySourceFunnel[src].working++
     }
 
@@ -483,7 +511,7 @@ export async function GET(req: NextRequest) {
     if (includeClosedWon) {
       const CLOSED_WON_STAGE_ID = '982194449'
       const oppPlusContactIds = contacts
-        .filter(c => OPP_STAGES.has(c.properties?.lifecyclestage || ''))
+        .filter(c => OPP_STAGES_CUMULATIVE.has(c.properties?.lifecyclestage || ''))
         .map(c => c.id)
       const BATCH2 = 8
       for (let i = 0; i < oppPlusContactIds.length; i += BATCH2) {

@@ -8,6 +8,7 @@ import {
   Handshake, Cloud, Briefcase, MessageSquare,
   LogOut, PenLine, BarChart2, Globe, Share2, Mic, Cog,
   Palette, FlaskConical, Video, BookOpen, DollarSign, Newspaper, BookMarked, Star, Award, Bot, Radio,
+  TrendingUp,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
@@ -20,7 +21,9 @@ type NavItem = { title: string; url: string; icon: typeof LayoutDashboard };
 
 const summary: NavItem[] = [
   { title: "Summary", url: "/", icon: LayoutDashboard },
+  { title: "Executive Dashboard", url: "/executive", icon: TrendingUp },
   { title: "MQLs", url: "/mqls", icon: Target },
+  { title: "MQL Monthly Trends", url: "/mqls/monthly-trends", icon: BarChart2 },
   { title: "Leads", url: "/leads", icon: Users },
   { title: "Agent Studio Leads", url: "/agent-studio-leads", icon: Bot },
 ];
@@ -37,6 +40,7 @@ const groups: { label: string; items: NavItem[] }[] = [
     label: "Performance Channel",
     items: [
       { title: "Ads", url: "/ads", icon: Megaphone },
+      { title: "3-Month Ads Performance", url: "/ads/performance-report", icon: BarChart2 },
       { title: "GSI/SI & Founder Amplification", url: "/gsi-si-founder-amplification", icon: Radio },
     ],
   },

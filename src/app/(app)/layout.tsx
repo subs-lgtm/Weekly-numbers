@@ -7,19 +7,22 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/lib/auth-context";
 import { WeekProvider } from "@/lib/week-context";
 
+const PREVIEW_BYPASS = false;
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { loading, user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
+    if (PREVIEW_BYPASS) return;
     if (!loading && !user) {
       const redirect = pathname || "/";
       router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
     }
   }, [loading, user, router, pathname]);
 
-  if (loading || !user) {
+  if (!PREVIEW_BYPASS && (loading || !user)) {
     return (
       <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">
         Loading…

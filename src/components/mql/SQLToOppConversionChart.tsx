@@ -71,10 +71,15 @@ export function SQLToOppConversionChart({ sectionKey, weekStart }: Props) {
       const promises = weekKeys.map(async (wk) => {
         const end = format(addWeeks(new Date(wk + 'T00:00:00'), 1), 'yyyy-MM-dd')
         try {
-          const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&nocache=1`)
+          // Both SQL and Opportunity now come from the SDR tracker sheet (not HubSpot) — SDRs
+          // mark leads SQL/Qualified Opportunity there directly, often before or without ever
+          // updating the matching HubSpot property, so it's the more complete source for both.
+          // Keeping numerator and denominator on the same source avoids mixing two different
+          // definitions of "SQL" into one ratio.
+          const res = await fetch(`/api/sdr-sql-tracker?start=${wk}&end=${end}`)
           const data = await res.json()
-          const sql = data.funnel?.sql || 0
-          const opportunity = data.funnel?.opportunity || 0
+          const sql = data.sql || 0
+          const opportunity = data.opp || 0
           const rate = sql > 0 ? Math.round((opportunity / sql) * 100) : 0
           return { week: format(new Date(wk + 'T00:00:00'), 'MMM d'), 'SQL → Opportunity %': rate, sql, opportunity }
         } catch {
@@ -97,7 +102,7 @@ export function SQLToOppConversionChart({ sectionKey, weekStart }: Props) {
     return (
       <div className={CARD}>
         <p className="eyebrow mb-4">WoW Trend — SQL → Opportunity %</p>
-        <p className="text-[13px] text-[#7A6A60]">Loading from HubSpot…</p>
+        <p className="text-[13px] text-[#7A6A60]">Loading from SDR tracker…</p>
       </div>
     )
   }
@@ -105,7 +110,7 @@ export function SQLToOppConversionChart({ sectionKey, weekStart }: Props) {
   return (
     <div className={CARD}>
       <p className="eyebrow mb-1">WoW Trend — SQL → Opportunity %</p>
-      <p className="text-[12px] text-[#7A6A60] mb-4">Hover each point for SQL &amp; Opportunity counts</p>
+      <p className="text-[12px] text-[#7A6A60] mb-4">Hover each point for SQL &amp; Opportunity counts · from SDR tracker sheet</p>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 36, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid {...GRID} />
