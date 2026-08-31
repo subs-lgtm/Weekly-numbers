@@ -32,7 +32,11 @@ export const STATUS_LINE_FIELD: Record<ActivityStatus, 'redLine' | 'amberLine' |
 // metrics-config) so it's a one-line change to bring back if it resumes.
 // reachout-activity: removed from Summary for now — excluded here (not deleted from
 // metrics-config) so it's a one-line change to bring back later.
-export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads', 'agentpreneur', 'reachout-activity'].includes(s.key))
+// git-agent: was appearing as a second, empty "GSI/SI"-looking row in Other Functions (its
+// label happened to say 'GSI/SI', unrelated to the real GSI & SI Partners category card above
+// it) — excluded here (not deleted from metrics-config, its own /git-agent page is untouched)
+// so it's a one-line change to bring back if this rollup is wanted again later.
+export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads', 'agentpreneur', 'reachout-activity', 'git-agent'].includes(s.key))
 
 // Each category collapses multiple existing sections into a SINGLE trackable
 // row — one status dot, one summary, one owner, one Firestore doc — covering
