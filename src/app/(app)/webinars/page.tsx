@@ -7,7 +7,7 @@ import { useWeeklyMetrics } from '@/hooks/useWeeklyMetrics'
 import { useAuth } from '@/lib/auth-context'
 import { TaskTextBoxes } from '@/components/shared/TaskTextBoxes'
 import { useWeek } from '@/lib/week-context'
-import { Video, Users, UserCheck, Percent, Plus, Trash2, Calendar, Eye, Mic } from 'lucide-react'
+import { Video, Users, UserCheck, Percent, Plus, Trash2, Calendar, Eye, Mic, DollarSign } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore'
 import { getDb } from '@/lib/firebase'
@@ -67,6 +67,7 @@ type Webinar = {
   name: string
   date: string
   registrations: number
+  paidRegistrations: number
   attendees: number
   viewers: number
   speakers: string
@@ -87,7 +88,7 @@ function WebinarCard({ webinar, onDelete, onUpdate }: { webinar: Webinar; onDele
   }
 
   const commitEdit = (field: string) => {
-    const isNumeric = ['registrations', 'attendees', 'viewers'].includes(field)
+    const isNumeric = ['registrations', 'paidRegistrations', 'attendees', 'viewers'].includes(field)
     const newVal = isNumeric ? (parseInt(draft) || 0) : draft
     if (newVal !== (webinar as any)[field]) {
       onUpdate({ [field]: newVal })
@@ -166,18 +167,20 @@ function WebinarCard({ webinar, onDelete, onUpdate }: { webinar: Webinar; onDele
         </button>
       </div>
 
-      {!isUpcoming && (
-        <div className="grid grid-cols-4 gap-3 mt-4">
-          <EditableNumber field="registrations" value={webinar.registrations} label="Registrations" icon={<Users className="h-3.5 w-3.5 text-[#6B4C4C]" />} />
-          <EditableNumber field="attendees" value={webinar.attendees} label="Attendees" icon={<UserCheck className="h-3.5 w-3.5 text-[#16A34A]" />} />
-          <EditableNumber field="viewers" value={webinar.viewers || 0} label="Viewers" icon={<Eye className="h-3.5 w-3.5 text-[#7C3AED]" />} />
-          <div className="rounded-[12px] bg-[#F9F5F1] p-3 text-center">
-            <Percent className="h-3.5 w-3.5 text-[#D97706] mx-auto mb-1" />
-            <p className="text-[18px] font-[600] text-[#2A1F1A]">{rate}%</p>
-            <p className="text-[10px] text-[#7A6A60]">Attendance</p>
-          </div>
+      {/* Shown for every webinar regardless of status (not just Completed) — Paid
+          Registrations in particular is often filled in ahead of the event, and reps should be
+          able to start tracking all 5 numbers the moment a webinar card is created. */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
+        <EditableNumber field="registrations" value={webinar.registrations} label="Registrations" icon={<Users className="h-3.5 w-3.5 text-[#6B4C4C]" />} />
+        <EditableNumber field="paidRegistrations" value={webinar.paidRegistrations || 0} label="Paid Registrations" icon={<DollarSign className="h-3.5 w-3.5 text-[#B9822E]" />} />
+        <EditableNumber field="attendees" value={webinar.attendees} label="Attendees" icon={<UserCheck className="h-3.5 w-3.5 text-[#16A34A]" />} />
+        <EditableNumber field="viewers" value={webinar.viewers || 0} label="Viewers" icon={<Eye className="h-3.5 w-3.5 text-[#7C3AED]" />} />
+        <div className="rounded-[12px] bg-[#F9F5F1] p-3 text-center">
+          <Percent className="h-3.5 w-3.5 text-[#D97706] mx-auto mb-1" />
+          <p className="text-[18px] font-[600] text-[#2A1F1A]">{rate}%</p>
+          <p className="text-[10px] text-[#7A6A60]">Attendance</p>
         </div>
-      )}
+      </div>
 
       {/* Speakers — tag-style with + button */}
       <div className="mt-3">
@@ -247,6 +250,7 @@ function AddWebinarForm({ onAdd }: { onAdd: (w: Omit<Webinar, 'id'>) => void }) 
   const [name, setName] = useState('')
   const [date, setDate] = useState('')
   const [registrations, setRegistrations] = useState('')
+  const [paidRegistrations, setPaidRegistrations] = useState('')
   const [attendees, setAttendees] = useState('')
   const [viewers, setViewers] = useState('')
   const [speakers, setSpeakers] = useState('')
@@ -254,8 +258,8 @@ function AddWebinarForm({ onAdd }: { onAdd: (w: Omit<Webinar, 'id'>) => void }) 
 
   const submit = () => {
     if (!name || !date) return
-    onAdd({ name, date, registrations: parseInt(registrations) || 0, attendees: parseInt(attendees) || 0, viewers: parseInt(viewers) || 0, speakers, status, notes: '' })
-    setName(''); setDate(''); setRegistrations(''); setAttendees(''); setViewers(''); setSpeakers(''); setStatus('upcoming'); setOpen(false)
+    onAdd({ name, date, registrations: parseInt(registrations) || 0, paidRegistrations: parseInt(paidRegistrations) || 0, attendees: parseInt(attendees) || 0, viewers: parseInt(viewers) || 0, speakers, status, notes: '' })
+    setName(''); setDate(''); setRegistrations(''); setPaidRegistrations(''); setAttendees(''); setViewers(''); setSpeakers(''); setStatus('upcoming'); setOpen(false)
   }
 
   if (!open) return (
@@ -271,6 +275,7 @@ function AddWebinarForm({ onAdd }: { onAdd: (w: Omit<Webinar, 'id'>) => void }) 
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Webinar name" className="rounded-[10px] border border-[#D4CBC0] px-3 py-2 text-[13px] outline-none focus:border-[#6B4C4C]" />
         <input type="date" value={date} onChange={e => setDate(e.target.value)} className="rounded-[10px] border border-[#D4CBC0] px-3 py-2 text-[13px] outline-none focus:border-[#6B4C4C]" />
         <input value={registrations} onChange={e => setRegistrations(e.target.value)} placeholder="Registrations" type="number" className="rounded-[10px] border border-[#D4CBC0] px-3 py-2 text-[13px] outline-none focus:border-[#6B4C4C]" />
+        <input value={paidRegistrations} onChange={e => setPaidRegistrations(e.target.value)} placeholder="Paid Registrations" type="number" className="rounded-[10px] border border-[#D4CBC0] px-3 py-2 text-[13px] outline-none focus:border-[#6B4C4C]" />
         <input value={attendees} onChange={e => setAttendees(e.target.value)} placeholder="Attendees" type="number" className="rounded-[10px] border border-[#D4CBC0] px-3 py-2 text-[13px] outline-none focus:border-[#6B4C4C]" />
         <input value={viewers} onChange={e => setViewers(e.target.value)} placeholder="Viewers" type="number" className="rounded-[10px] border border-[#D4CBC0] px-3 py-2 text-[13px] outline-none focus:border-[#6B4C4C]" />
         <input value={speakers} onChange={e => setSpeakers(e.target.value)} placeholder="Speakers (e.g. John, Jane)" className="rounded-[10px] border border-[#D4CBC0] px-3 py-2 text-[13px] outline-none focus:border-[#6B4C4C]" />
@@ -325,6 +330,7 @@ export default function Page() {
 
   // Totals
   const totalRegs = completed.reduce((s, w) => s + w.registrations, 0)
+  const totalPaidRegs = completed.reduce((s, w) => s + (w.paidRegistrations || 0), 0)
   const totalAttendees = completed.reduce((s, w) => s + w.attendees, 0)
   const totalViewers = completed.reduce((s, w) => s + (w.viewers || 0), 0)
   const avgRate = totalRegs > 0 ? Math.round((totalAttendees / totalRegs) * 100) : 0
@@ -337,7 +343,7 @@ export default function Page() {
 
         {/* Summary cards */}
         {completed.length > 0 && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             <div className="rounded-[20px] border border-[#D4CBC0] bg-white p-5 shadow-[0_4px_20px_rgba(40,20,10,.07)]">
               <Video className="h-4 w-4 text-[#6B4C4C] mb-2" />
               <p className="eyebrow mb-1">Total Webinars</p>
@@ -347,6 +353,11 @@ export default function Page() {
               <Users className="h-4 w-4 text-[#2563EB] mb-2" />
               <p className="eyebrow mb-1">Total Registrations</p>
               <p className="font-['Playfair_Display'] font-[500] text-[1.75rem] text-[#2A1F1A]">{totalRegs}</p>
+            </div>
+            <div className="rounded-[20px] border border-[#D4CBC0] bg-white p-5 shadow-[0_4px_20px_rgba(40,20,10,.07)]">
+              <DollarSign className="h-4 w-4 text-[#B9822E] mb-2" />
+              <p className="eyebrow mb-1">Total Paid Registrations</p>
+              <p className="font-['Playfair_Display'] font-[500] text-[1.75rem] text-[#2A1F1A]">{totalPaidRegs}</p>
             </div>
             <div className="rounded-[20px] border border-[#D4CBC0] bg-white p-5 shadow-[0_4px_20px_rgba(40,20,10,.07)]">
               <UserCheck className="h-4 w-4 text-[#16A34A] mb-2" />
