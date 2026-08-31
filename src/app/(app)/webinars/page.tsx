@@ -167,20 +167,21 @@ function WebinarCard({ webinar, onDelete, onUpdate }: { webinar: Webinar; onDele
         </button>
       </div>
 
-      {/* Shown for every webinar regardless of status (not just Completed) — Paid
-          Registrations in particular is often filled in ahead of the event, and reps should be
-          able to start tracking all 5 numbers the moment a webinar card is created. */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
-        <EditableNumber field="registrations" value={webinar.registrations} label="Registrations" icon={<Users className="h-3.5 w-3.5 text-[#6B4C4C]" />} />
-        <EditableNumber field="paidRegistrations" value={webinar.paidRegistrations || 0} label="Paid Registrations" icon={<DollarSign className="h-3.5 w-3.5 text-[#B9822E]" />} />
-        <EditableNumber field="attendees" value={webinar.attendees} label="Attendees" icon={<UserCheck className="h-3.5 w-3.5 text-[#16A34A]" />} />
-        <EditableNumber field="viewers" value={webinar.viewers || 0} label="Viewers" icon={<Eye className="h-3.5 w-3.5 text-[#7C3AED]" />} />
-        <div className="rounded-[12px] bg-[#F9F5F1] p-3 text-center">
-          <Percent className="h-3.5 w-3.5 text-[#D97706] mx-auto mb-1" />
-          <p className="text-[18px] font-[600] text-[#2A1F1A]">{rate}%</p>
-          <p className="text-[10px] text-[#7A6A60]">Attendance</p>
+      {/* Completed webinars only — reverted per explicit instruction after briefly showing this
+          on Upcoming cards too (which just displayed a confusing row of 0s pre-event). */}
+      {!isUpcoming && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
+          <EditableNumber field="registrations" value={webinar.registrations} label="Registrations" icon={<Users className="h-3.5 w-3.5 text-[#6B4C4C]" />} />
+          <EditableNumber field="paidRegistrations" value={webinar.paidRegistrations || 0} label="Paid Registrations" icon={<DollarSign className="h-3.5 w-3.5 text-[#B9822E]" />} />
+          <EditableNumber field="attendees" value={webinar.attendees} label="Attendees" icon={<UserCheck className="h-3.5 w-3.5 text-[#16A34A]" />} />
+          <EditableNumber field="viewers" value={webinar.viewers || 0} label="Viewers" icon={<Eye className="h-3.5 w-3.5 text-[#7C3AED]" />} />
+          <div className="rounded-[12px] bg-[#F9F5F1] p-3 text-center">
+            <Percent className="h-3.5 w-3.5 text-[#D97706] mx-auto mb-1" />
+            <p className="text-[18px] font-[600] text-[#2A1F1A]">{rate}%</p>
+            <p className="text-[10px] text-[#7A6A60]">Attendance</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Speakers — tag-style with + button */}
       <div className="mt-3">
