@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
-type DealDetail = { name: string; amount: number; stage: string }
+type DealDetail = { name: string; amount: number; stage: string; source: string }
 type WeekBucket = { weekStart: string; label: string; pipelineGenerated: number; dealCount: number; closedWonAmount: number; closedWonCount: number; deals: DealDetail[] }
 
 type Props = { queryEnd: string }
@@ -32,7 +32,7 @@ function DealsTooltip({ week, align }: { week: WeekBucket; align: 'left' | 'cent
     'left-1/2 -translate-x-1/2'
 
   return (
-    <div className={`absolute bottom-full ${alignCls} mb-2 z-30 w-[320px] rounded-[14px] border border-[#D4CBC0] bg-white shadow-[0_8px_32px_rgba(40,20,10,.16)] p-3`}>
+    <div className={`absolute bottom-full ${alignCls} mb-2 z-30 w-[400px] rounded-[14px] border border-[#D4CBC0] bg-white shadow-[0_8px_32px_rgba(40,20,10,.16)] p-3`}>
       <div className="flex items-center justify-between mb-2 px-1">
         <p className="text-[11px] font-[700] text-[#2A1F1A]">{week.label} — {week.dealCount} deal{week.dealCount !== 1 ? 's' : ''}</p>
         <p className="text-[11px] font-[700] text-[#6B4C4C]">{formatCurrency(week.pipelineGenerated)}</p>
@@ -47,12 +47,13 @@ function DealsTooltip({ week, align }: { week: WeekBucket; align: 'left' | 'cent
                 <th className="text-left py-1 px-1 text-[#7A6A60] font-[500]">Deal</th>
                 <th className="text-right py-1 px-1 text-[#7A6A60] font-[500]">Amount</th>
                 <th className="text-left py-1 px-1 text-[#7A6A60] font-[500]">Stage</th>
+                <th className="text-left py-1 px-1 text-[#7A6A60] font-[500]">Source</th>
               </tr>
             </thead>
             <tbody>
               {week.deals.map((d, i) => (
                 <tr key={i} className="border-b border-[#F9F5F1] last:border-0">
-                  <td className="py-1 px-1 text-[#2A1F1A] font-[500] max-w-[130px] truncate">{d.name}</td>
+                  <td className="py-1 px-1 text-[#2A1F1A] font-[500] max-w-[110px] truncate">{d.name}</td>
                   <td className="py-1 px-1 text-right text-[#2A1F1A] font-[600] whitespace-nowrap">
                     {d.amount > 0 ? formatCurrency(d.amount) : '—'}
                   </td>
@@ -61,6 +62,7 @@ function DealsTooltip({ week, align }: { week: WeekBucket; align: 'left' | 'cent
                       {d.stage}
                     </span>
                   </td>
+                  <td className="py-1 px-1 text-[#7A6A60] whitespace-nowrap">{d.source}</td>
                 </tr>
               ))}
             </tbody>

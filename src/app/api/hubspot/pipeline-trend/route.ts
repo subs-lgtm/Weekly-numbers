@@ -28,6 +28,13 @@ import { NextRequest, NextResponse } from 'next/server'
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 const STUDIO_PIPELINE_ID = '668588091'
 const MARKETING_DEAL_SOURCES = ['Direct', 'Inbound', 'Marketing']
+// Display labels for deal_source's internal values — matches HubSpot's own property
+// definition (e.g. internal 'Direct' displays as "Direct / Outbound").
+const DEAL_SOURCE_LABELS: Record<string, string> = {
+  Direct: 'Direct / Outbound',
+  Inbound: 'Inbound',
+  Marketing: 'Marketing',
+}
 const CLOSED_LOST_STAGES = new Set(['982194450', '982194451']) // Closed Lost + Dropped
 const CLOSED_WON_STAGE = '982194449'
 
@@ -61,7 +68,7 @@ async function fetchDeals(apiKey: string, createdGteMs: number, createdLtMs: num
           { propertyName: 'contact_lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' },
         ],
       }],
-      properties: ['dealname', 'amount', 'dealstage', 'createdate'],
+      properties: ['dealname', 'amount', 'dealstage', 'createdate', 'deal_source'],
       limit: 100,
     }
     if (after) body.after = after
@@ -83,7 +90,7 @@ async function fetchDeals(apiKey: string, createdGteMs: number, createdLtMs: num
   return allDeals
 }
 
-type DealDetail = { name: string; amount: number; stage: string }
+type DealDetail = { name: string; amount: number; stage: string; source: string }
 
 function summarize(deals: any[]) {
   let pipelineGenerated = 0
@@ -94,6 +101,7 @@ function summarize(deals: any[]) {
   for (const d of deals) {
     const amount = parseFloat(d.properties?.amount || '0') || 0
     const stage = d.properties?.dealstage || ''
+    const source = d.properties?.deal_source || ''
     if (CLOSED_LOST_STAGES.has(stage)) continue // excluded from "pipeline generated"
     pipelineGenerated += amount
     dealCount++
@@ -101,6 +109,7 @@ function summarize(deals: any[]) {
       name: d.properties?.dealname || 'Untitled Deal',
       amount,
       stage: STAGE_NAMES[stage] || stage || 'Unknown',
+      source: DEAL_SOURCE_LABELS[source] || source || '—',
     })
     if (stage === CLOSED_WON_STAGE) {
       closedWonAmount += amount
