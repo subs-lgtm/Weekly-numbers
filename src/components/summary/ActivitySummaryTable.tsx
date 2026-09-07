@@ -47,6 +47,9 @@ const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[] }[] =
   { key: 'cat-ads', label: 'Ads', sectionKeys: ['ads'] },
   { key: 'cat-gsi-founder-amp', label: 'GSI/SI & Founder Amplification', sectionKeys: ['gsi-si-founder-amplification'] },
   { key: 'cat-seo-content', label: 'SEO / Content', sectionKeys: ['seo', 'content', 'playbooks'] },
+  // No dedicated dashboard page for ABM — this is a tracking-only row (empty sectionKeys is
+  // fine: buildActivityItems()'s sublabel is skipped when there's nothing to join).
+  { key: 'cat-abm', label: 'ABM', sectionKeys: [] },
   { key: 'cat-products', label: 'Products', sectionKeys: ['studio-signups', 'architect', 'lyzr-gpt'] },
   { key: 'cat-social', label: 'Social & Influencers', sectionKeys: ['social-influencers', 'reddit'] },
   { key: 'cat-website', label: 'Website', sectionKeys: ['pages', 'ui-ux', 'pr-news'] },
