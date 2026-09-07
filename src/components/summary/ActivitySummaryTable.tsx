@@ -125,6 +125,7 @@ const OWNER_OPTIONS = [
   'Mothilal', 'Shreya', 'Shifa', 'Kailash',
   'Prince', 'Pranamya', 'Ani', 'Ankita',
   'Vaibhavi', 'Kunj', 'Leonard', 'Vaibhav', 'Nirupam', 'Apoorva', 'Faraaz', 'Rida', 'Alma', 'Arnav', 'Anuskha',
+  'Rishabh', 'Deepyanti', 'Deepankar',
 ]
 
 // Default owner per function — matches the reference mockup where a function was shown there.
@@ -148,6 +149,18 @@ const DEFAULT_OWNERS: Record<string, string> = {
   'cat-partners-hyperscalers': 'Anuskha',
   'cat-partners-emerging': 'Apoorva',
   'cat-partners-gsi': 'Kailash',
+  // Category-card defaults (2026-09-07 fix) — CategoryCard looks up DEFAULT_OWNERS by the
+  // CATEGORY key (e.g. 'cat-ads'), not by its underlying section key(s) above. Before this,
+  // 'ads'/'seo'/'content' etc. had defaults set, but the "Ads"/"SEO / Content" CATEGORY CARDS
+  // never picked them up — they always showed unassigned regardless. Only the three
+  // cat-partners-* entries above were already keyed correctly (no merged-section conflict).
+  // Only added here where the underlying sections agree on one owner (or there's just one
+  // section) — see CLAUDE.md for the categories deliberately left out due to a conflict
+  // (cat-social, cat-website) or no existing signal at all (cat-gsi-founder-amp, cat-abm,
+  // cat-products) — don't guess an owner for those without asking first.
+  'cat-ads': 'Mothilal',
+  'cat-seo-content': 'Shreya',
+  'cat-social': 'Prince', // confirmed by user 2026-09-07 (over Kailash, the Reddit owner)
 }
 
 function timeAgo(iso: string | null): string {
