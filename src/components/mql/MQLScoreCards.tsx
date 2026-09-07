@@ -257,60 +257,38 @@ export function OtherMQLMetrics({ data, prevData, monthToDateTotal, prevMonthToD
 }
 
 /* =========================================================================
-   QUALIFICATION FUNNEL — matches reference HTML "MQL Qualification Funnel"
-   section: MQL → Qualified → Working → SQL → Opportunity → Customer
+   QUALIFICATION FUNNELS — split 2026-09-07 into two independent, single-
+   dimension tables (was one merged "MQL Qualification Funnel" table that
+   checked lifecyclestage BEFORE falling back to hs_lead_status, so a
+   contact already at SQL with a stale "Demo Completed" lead status just
+   vanished from the Demo Completed row — confusing when someone expects
+   their raw HubSpot status to be reflected somewhere). Each table below
+   counts every MQL exactly once, using ONLY its own property — no
+   cross-checking the other dimension, so nothing gets silently overridden.
+   Shared rendering via FunnelTable(); MQLLeadStatusFunnel and
+   MQLLifecycleStatusFunnel below are the two exported entry points.
    ========================================================================= */
 
-export function QualificationFunnel({ data }: { data: WeekMetrics }) {
-  const mqls = num(data, 'mqls_total')
-  const working = num(data, 'working_mqls')
-  const sql = num(data, 'sql_count')
-  const demoBooked = num(data, 'demo_booked_count')
-  const demoCompleted = num(data, 'demo_completed_count')
+type FunnelStage = { label: string; value: number; color: string; breakdownKey: string; ofLabel?: string; ofBase?: number }
 
-  let breakdown: Record<string, { working: number; linkedinAds: number; website: number; total: number }> = {}
-  try {
-    const raw = data['stage_breakdown']?.value
-    if (raw) breakdown = JSON.parse(raw)
-  } catch {}
-
-  let mqlStatus: { new: number; working: number; demo_booked: number; demo_completed: number; sql: number; junk: number } = { new: 0, working: 0, demo_booked: 0, demo_completed: 0, sql: 0, junk: 0 }
-  try {
-    const raw = data['mql_status_breakdown']?.value
-    if (raw) mqlStatus = JSON.parse(raw)
-  } catch {}
-
-  const subStages = [
-    { label: 'New', value: mqlStatus.new || 0, color: '#3D5A8C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'new' },
-    { label: 'Working', value: mqlStatus.working || 0, color: '#8A6152', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'working' },
-    { label: 'Demo Booked', value: mqlStatus.demo_booked || 0, color: '#B9822E', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_booked' },
-    { label: 'Demo Completed', value: mqlStatus.demo_completed || 0, color: '#A06E5B', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_completed' },
-    { label: 'SQL', value: mqlStatus.sql || 0, color: '#C96A5A', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'sql' },
-    { label: 'Junk/Unqualified', value: mqlStatus.junk || 0, color: '#BE4A3C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'junk' },
-  ]
-  // Sort sub-stages dynamically in descending order of value
-  subStages.sort((a, b) => b.value - a.value)
-
-  const stages = [
-    { label: 'MQL', value: mqls || 0, color: '#5B3A34', breakdownKey: 'mqls' },
-    ...subStages
-  ]
-
-  const hasAnyFunnelData = mqls > 0
-  if (!hasAnyFunnelData) return null
-
+function FunnelTable({
+  stages, breakdown, countHeader = 'Count',
+}: {
+  stages: FunnelStage[]
+  breakdown: Record<string, { working: number; linkedinAds: number; website: number; total: number }>
+  countHeader?: string
+}) {
   const maxVal = Math.max(...stages.map(s => s.value), 1)
 
   return (
     <div className="card">
-      <div className="funnel-labels"><div>Stage</div><div /><div style={{ textAlign: 'right' }}>Count</div><div style={{ textAlign: 'right' }}>Conversion</div><div style={{ textAlign: 'right' }}>Drop-off</div></div>
+      <div className="funnel-labels"><div>Stage</div><div /><div style={{ textAlign: 'right' }}>{countHeader}</div><div style={{ textAlign: 'right' }}>Conversion</div><div style={{ textAlign: 'right' }}>Drop-off</div></div>
       <div className="funnel-wrap" style={{ gap: '20px' }}>
         {stages.map((stage, i) => {
           const pct = Math.max((stage.value / maxVal) * 100, stage.value > 0 ? 4 : 0)
-          const conv = i === 0 ? 100 : (stage as any).ofBase > 0 ? Math.round((stage.value / (stage as any).ofBase) * 100) : 0
+          const conv = i === 0 ? 100 : (stage.ofBase ?? 0) > 0 ? Math.round((stage.value / (stage.ofBase as number)) * 100) : 0
           const drop = i === 0 ? null : 100 - conv
           const bd = breakdown[stage.breakdownKey]
-          const isMql = stage.label === 'MQL'
 
           return (
             <div key={stage.label}>
@@ -336,7 +314,7 @@ export function QualificationFunnel({ data }: { data: WeekMetrics }) {
                 <div className="funnel-conv">{stage.value.toLocaleString()}</div>
                 <div className={cn('funnel-conv', i === 0 || conv >= 50 ? 'pos' : 'neg')}>
                   {i === 0 ? '100%' : `${conv}%`}
-                  {(stage as any).ofLabel && <small style={{ fontWeight: 400, color: '#7A6A60' }}> {(stage as any).ofLabel}</small>}
+                  {stage.ofLabel && <small style={{ fontWeight: 400, color: '#7A6A60' }}> {stage.ofLabel}</small>}
                 </div>
                 <div className="funnel-drop">{drop === null ? '—' : `${drop}%`}</div>
               </div>
@@ -347,3 +325,68 @@ export function QualificationFunnel({ data }: { data: WeekMetrics }) {
     </div>
   )
 }
+
+// "MQL — Lead Status Funnel": pure hs_lead_status breakdown, never consults lifecyclestage.
+export function MQLLeadStatusFunnel({ data }: { data: WeekMetrics }) {
+  const mqls = num(data, 'mqls_total')
+
+  let breakdown: Record<string, { working: number; linkedinAds: number; website: number; total: number }> = {}
+  try {
+    const raw = data['lead_status_stage_breakdown']?.value
+    if (raw) breakdown = JSON.parse(raw)
+  } catch {}
+
+  let leadStatus: { new: number; working: number; demo_booked: number; demo_completed: number; junk: number } = { new: 0, working: 0, demo_booked: 0, demo_completed: 0, junk: 0 }
+  try {
+    const raw = data['lead_status_breakdown']?.value
+    if (raw) leadStatus = JSON.parse(raw)
+  } catch {}
+
+  const subStages: FunnelStage[] = [
+    { label: 'New', value: leadStatus.new || 0, color: '#3D5A8C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'new' },
+    { label: 'Working', value: leadStatus.working || 0, color: '#8A6152', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'working' },
+    { label: 'Demo Booked', value: leadStatus.demo_booked || 0, color: '#B9822E', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_booked' },
+    { label: 'Demo Completed', value: leadStatus.demo_completed || 0, color: '#A06E5B', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_completed' },
+    { label: 'Junk/Unqualified', value: leadStatus.junk || 0, color: '#BE4A3C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'junk' },
+  ]
+  subStages.sort((a, b) => b.value - a.value)
+
+  const stages: FunnelStage[] = [
+    { label: 'MQL', value: mqls || 0, color: '#5B3A34', breakdownKey: 'mqls' },
+    ...subStages,
+  ]
+
+  if (!(mqls > 0)) return null
+  return <FunnelTable stages={stages} breakdown={breakdown} />
+}
+
+// "MQL — Lifecycle Status Funnel": pure lifecyclestage breakdown (current-stage-exact, same
+// SQL_EXACT/OPP_EXACT definition as the rest of the dashboard), never consults hs_lead_status.
+// Kept in natural funnel order (not sorted by value) since MQL -> SQL -> Opportunity -> Customer
+// is a genuine progression, unlike the lead-status sub-stages above.
+export function MQLLifecycleStatusFunnel({ data }: { data: WeekMetrics }) {
+  const mqls = num(data, 'mqls_total')
+
+  let breakdown: Record<string, { working: number; linkedinAds: number; website: number; total: number }> = {}
+  try {
+    const raw = data['lifecycle_status_stage_breakdown']?.value
+    if (raw) breakdown = JSON.parse(raw)
+  } catch {}
+
+  let lifecycleStatus: { mql: number; sql: number; opportunity: number; customer: number } = { mql: 0, sql: 0, opportunity: 0, customer: 0 }
+  try {
+    const raw = data['lifecycle_status_breakdown']?.value
+    if (raw) lifecycleStatus = JSON.parse(raw)
+  } catch {}
+
+  const stages: FunnelStage[] = [
+    { label: 'MQL', value: mqls || 0, color: '#5B3A34', breakdownKey: 'mqls' },
+    { label: 'SQL', value: lifecycleStatus.sql || 0, color: '#C96A5A', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'sql' },
+    { label: 'Opportunity', value: lifecycleStatus.opportunity || 0, color: '#3D5A8C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'opportunity' },
+    { label: 'Customer', value: lifecycleStatus.customer || 0, color: '#3E7A55', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'customer' },
+  ]
+
+  if (!(mqls > 0)) return null
+  return <FunnelTable stages={stages} breakdown={breakdown} />
+}
+

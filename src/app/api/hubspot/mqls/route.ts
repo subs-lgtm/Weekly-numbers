@@ -240,6 +240,40 @@ export async function GET(req: NextRequest) {
       customer: { working: 0, linkedinAds: 0, website: 0, total: 0 },
     }
 
+    // Pure single-dimension breakdowns -- added 2026-09-07 so the "MQL Qualification Funnel"
+    // can be split into two independent tables instead of one merged one. The original
+    // mqlStatus*/stageBreakdown bucketing above checks lifecyclestage FIRST (SQL_STAGES_
+    // CUMULATIVE) before falling back to hs_lead_status, so a contact who has progressed to
+    // SQL but still has a stale hs_lead_status of "Demo Completed" gets silently counted under
+    // SQL only -- correct for a single merged funnel, but confusing when someone expects to
+    // see every contact whose hs_lead_status literally says "Demo Completed" reflected
+    // somewhere. These two breakdowns never cross-check the other property, so each is a
+    // complete, honest picture of its own dimension alone -- every MQL appears in exactly one
+    // bucket of EACH breakdown, independently.
+    let leadStatusNew = 0
+    let leadStatusWorking = 0
+    let leadStatusDemoBooked = 0
+    let leadStatusDemoCompleted = 0
+    let leadStatusJunk = 0
+    const leadStatusStageBreakdown: Record<string, { working: number; linkedinAds: number; website: number; total: number }> = {
+      new: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+      working: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+      demo_booked: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+      demo_completed: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+      junk: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+    }
+
+    let exactLifecycleMql = 0 // hasn't reached SQL/Opportunity/Customer yet on lifecyclestage
+    let exactLifecycleSql = 0
+    let exactLifecycleOpportunity = 0
+    let exactLifecycleCustomer = 0
+    const lifecycleStageBreakdown: Record<string, { working: number; linkedinAds: number; website: number; total: number }> = {
+      mql: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+      sql: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+      opportunity: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+      customer: { working: 0, linkedinAds: 0, website: 0, total: 0 },
+    }
+
     const DEMO_BOOKED_STATUSES = new Set([
       'Demo Booked', 'Demo Completed', 'Demo Completed - PLG',
       'Demo Completed - Disqualified', 'Demo no show',
@@ -288,7 +322,7 @@ export async function GET(req: NextRequest) {
 
     // Lifecycle-stage leakage funnel (pure lifecyclestage property, cumulative/subset)
     let lifecycleMqlPlus = 0
-    let lifecycleSqlPlus = 0
+    let exactLifecycleSqlPlus = 0
     let lifecycleOppPlus = 0
     let lifecycleCustomer = 0
 
@@ -366,7 +400,7 @@ export async function GET(req: NextRequest) {
 
       // Lifecycle-stage leakage funnel (pure lifecyclestage, independent of hs_lead_status)
       if (MQL_PLUS_STAGES.has(stage)) lifecycleMqlPlus++
-      if (SQL_STAGES_CUMULATIVE.has(stage)) lifecycleSqlPlus++
+      if (SQL_STAGES_CUMULATIVE.has(stage)) exactLifecycleSqlPlus++
       if (OPP_STAGES_CUMULATIVE.has(stage)) lifecycleOppPlus++
       if (stage === 'customer') lifecycleCustomer++
 
@@ -427,6 +461,45 @@ export async function GET(req: NextRequest) {
       if (isWorking) stageBreakdown['mqls'].working++
       if (isPaid) stageBreakdown['mqls'].linkedinAds++
       else stageBreakdown['mqls'].website++
+
+      // Pure hs_lead_status bucket -- lifecyclestage is never consulted here, so a stale
+      // lead-status label always shows up honestly, even for a contact who has separately
+      // progressed further on lifecyclestage.
+      let leadStatusBucketKey: 'new' | 'working' | 'demo_booked' | 'demo_completed' | 'junk' = 'new'
+      if (status === 'Junk Lead' || status === 'Unqualified' || status === 'UNQUALIFIED') {
+        leadStatusBucketKey = 'junk'
+      } else if (DEMO_COMPLETED_STATUSES.has(status)) {
+        leadStatusBucketKey = 'demo_completed'
+      } else if (DEMO_BOOKED_STATUSES.has(status)) {
+        leadStatusBucketKey = 'demo_booked'
+      } else if (status === 'Working' || status === 'CONNECTED' || status === 'No reply' || status === 'Associated with a deal') {
+        leadStatusBucketKey = 'working'
+      }
+      if (leadStatusBucketKey === 'junk') leadStatusJunk++
+      else if (leadStatusBucketKey === 'demo_completed') leadStatusDemoCompleted++
+      else if (leadStatusBucketKey === 'demo_booked') leadStatusDemoBooked++
+      else if (leadStatusBucketKey === 'working') leadStatusWorking++
+      else leadStatusNew++
+      leadStatusStageBreakdown[leadStatusBucketKey].total++
+      if (isWorking) leadStatusStageBreakdown[leadStatusBucketKey].working++
+      if (isPaid) leadStatusStageBreakdown[leadStatusBucketKey].linkedinAds++
+      else leadStatusStageBreakdown[leadStatusBucketKey].website++
+
+      // Pure lifecyclestage bucket -- hs_lead_status is never consulted here. Uses the same
+      // SQL_EXACT/OPP_EXACT (current-stage-only) sets as the rest of the dashboard's SQL/
+      // Opportunity scorecards, per the portal's confirmed lifecyclestage label mapping.
+      let lifecycleBucketKey: 'mql' | 'sql' | 'opportunity' | 'customer' = 'mql'
+      if (stage === 'customer') lifecycleBucketKey = 'customer'
+      else if (OPP_EXACT.has(stage)) lifecycleBucketKey = 'opportunity'
+      else if (SQL_EXACT.has(stage)) lifecycleBucketKey = 'sql'
+      if (lifecycleBucketKey === 'customer') exactLifecycleCustomer++
+      else if (lifecycleBucketKey === 'opportunity') exactLifecycleOpportunity++
+      else if (lifecycleBucketKey === 'sql') exactLifecycleSql++
+      else exactLifecycleMql++
+      lifecycleStageBreakdown[lifecycleBucketKey].total++
+      if (isWorking) lifecycleStageBreakdown[lifecycleBucketKey].working++
+      if (isPaid) lifecycleStageBreakdown[lifecycleBucketKey].linkedinAds++
+      else lifecycleStageBreakdown[lifecycleBucketKey].website++
     }
 
     const total = contacts.length
@@ -554,6 +627,24 @@ export async function GET(req: NextRequest) {
         sql: mqlStatusSql,
         junk: mqlStatusJunk,
       },
+      // Pure single-dimension breakdowns (added 2026-09-07) -- each is a complete, honest
+      // picture of ONE property alone, never cross-checking the other. Feeds the two separate
+      // "MQL — Lead Status" / "MQL — Lifecycle Status" funnel tables on the MQL page.
+      lead_status_breakdown: {
+        new: leadStatusNew,
+        working: leadStatusWorking,
+        demo_booked: leadStatusDemoBooked,
+        demo_completed: leadStatusDemoCompleted,
+        junk: leadStatusJunk,
+      },
+      lead_status_stage_breakdown: leadStatusStageBreakdown,
+      lifecycle_status_breakdown: {
+        mql: exactLifecycleMql,
+        sql: exactLifecycleSql,
+        opportunity: exactLifecycleOpportunity,
+        customer: exactLifecycleCustomer,
+      },
+      lifecycle_status_stage_breakdown: lifecycleStageBreakdown,
       qualified,
       qualified_mqls: qualifiedMqls,
       high_priority: high,
@@ -584,7 +675,7 @@ export async function GET(req: NextRequest) {
       lifecycle_stage_funnel: {
         total,
         mql_plus: lifecycleMqlPlus,
-        sql_plus: lifecycleSqlPlus,
+        sql_plus: exactLifecycleSqlPlus,
         opportunity_plus: lifecycleOppPlus,
         customer: lifecycleCustomer,
       },

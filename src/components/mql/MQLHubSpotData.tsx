@@ -64,6 +64,10 @@ type Props = {
     book_demo_website: number
     stage_breakdown: Record<string, { working: number; linkedinAds: number; website: number; total: number }>
     mql_status_breakdown?: { new: number; working: number; demo_booked: number; demo_completed: number; sql: number; junk: number }
+    lead_status_breakdown?: { new: number; working: number; demo_booked: number; demo_completed: number; junk: number }
+    lead_status_stage_breakdown?: Record<string, { working: number; linkedinAds: number; website: number; total: number }>
+    lifecycle_status_breakdown?: { mql: number; sql: number; opportunity: number; customer: number }
+    lifecycle_status_stage_breakdown?: Record<string, { working: number; linkedinAds: number; website: number; total: number }>
     funnel: HubSpotMQLData['funnel']
     lifecycle_stage_funnel: HubSpotMQLData['lifecycle_stage_funnel']
     lead_status_funnel: HubSpotMQLData['lead_status_funnel']
@@ -142,6 +146,10 @@ export function MQLHubSpotData({ weekStart, queryStart, queryEnd, onData, includ
         book_demo_website: json.book_demo_website || 0,
         stage_breakdown: json.stage_breakdown || {},
         mql_status_breakdown: json.mql_status_breakdown,
+        lead_status_breakdown: json.lead_status_breakdown,
+        lead_status_stage_breakdown: json.lead_status_stage_breakdown,
+        lifecycle_status_breakdown: json.lifecycle_status_breakdown,
+        lifecycle_status_stage_breakdown: json.lifecycle_status_stage_breakdown,
         funnel: json.funnel,
         lifecycle_stage_funnel: json.lifecycle_stage_funnel,
         lead_status_funnel: json.lead_status_funnel,

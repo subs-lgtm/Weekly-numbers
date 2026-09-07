@@ -13,10 +13,15 @@ type Funnel = {
 
 type Props = { funnel: Funnel; monthlyFunnel?: Funnel }
 
+// Demo Booked / Demo Completed rows removed 2026-09-07 -- those are hs_lead_status concepts,
+// now fully covered by the separate "MQL — Lead Status Funnel" table above this one on the MQL
+// page. This funnel stays strictly lifecyclestage-based (MQL -> SQL -> Opportunity -> Customer),
+// per the same split rationale as MQLScoreCards.tsx's MQLLeadStatusFunnel/
+// MQLLifecycleStatusFunnel. The `Funnel` type keeps demo_booked/demo_completed fields (the
+// backend still returns them) so nothing else consuming this type breaks -- they're just no
+// longer rendered here.
 const STAGES: { key: keyof Funnel; label: string; color: string }[] = [
   { key: 'mqls', label: 'Total MQLs', color: '#5B3A34' },
-  { key: 'demo_booked', label: 'Demo Booked', color: '#6B4C4C' },
-  { key: 'demo_completed', label: 'Demo Completed', color: '#8A6152' },
   { key: 'sql', label: 'SQL', color: '#C96A5A' },
   { key: 'opportunity', label: 'Opportunity', color: '#3D5A8C' },
   { key: 'customer', label: 'Customer', color: '#3E7A55' },
@@ -24,14 +29,14 @@ const STAGES: { key: keyof Funnel; label: string; color: string }[] = [
 
 const TOOLTIPS: Record<string, string> = {
   mqls: "Total MQLs: Calculated from HubSpot contact creation events. Includes informational sign-ups (like Playbook downloads or Masterclass signups) and direct demo bookings, but excludes Agent Studio developer registrations and internal tests.",
-  demo_booked: "Demo Booked: Contacts whose HubSpot lead status is 'Demo Booked' (or downstream completed stages). Includes both direct calendar bookings and SDR-booked meetings.",
-  demo_completed: "Demo Completed: Contacts whose HubSpot lead status is 'Demo Completed' (or completed PLG). Represents completed demo calls conducted by the sales team.",
-  sql: "SQL: Sales Qualified Leads. Contacts qualified by an SDR or AE and moved to the SQL lifecycle stage in HubSpot.",
-  opportunity: "Opportunity: Contacts associated with an active sales opportunity in HubSpot (Deals pipeline).",
+  sql: "SQL: Sales Qualified Leads. Contacts whose current HubSpot lifecycle stage is SQL.",
+  opportunity: "Opportunity: Contacts whose current HubSpot lifecycle stage is Opportunity (associated with an active sales opportunity in the Deals pipeline).",
   customer: "Customer: Closed-Won customers. Contacts who have successfully signed and converted to paying customers."
 }
 
-/** Matches reference HTML's "MQL Journey" section — .card/.funnel-wrap/.funnel-stage structure. */
+/** "Consolidated MQL Lifecycle Status" section (was "MQL Journey") — pure lifecyclestage
+ *  progression: Total MQLs -> SQL -> Opportunity -> Customer. .card/.funnel-wrap/.funnel-stage
+ *  structure matches the reference HTML. */
 export function MQLJourneyFunnel({ funnel, monthlyFunnel }: Props) {
   // Use monthlyFunnel (MTD) as the primary funnel if available, fallback to weekly funnel
   const primaryFunnel = monthlyFunnel || funnel
@@ -50,29 +55,14 @@ export function MQLJourneyFunnel({ funnel, monthlyFunnel }: Props) {
           const weeklyValue = secondaryFunnel?.[stage.key]
           const pct = Math.max((value / maxVal) * 100, value > 0 ? 4 : 0)
 
-          // Dynamic conversion calculation to handle direct calendar bookings and SDR qualifications correctly
+          // Dynamic conversion calculation against each stage's natural denominator
           let convPct = 100
           let ofLabel: string | null = null
 
-          if (stage.key === 'demo_booked') {
+          if (stage.key === 'sql') {
             const ref = primaryFunnel.mqls
             convPct = ref > 0 ? Math.round((value / ref) * 100) : 0
             ofLabel = 'of MQL'
-          } else if (stage.key === 'demo_completed') {
-            const ref = primaryFunnel.demo_booked
-            convPct = ref > 0 ? Math.round((value / ref) * 100) : 0
-            ofLabel = 'of booked'
-          } else if (stage.key === 'sql') {
-            // If we have completed demos and SQL is a subset of them
-            if (primaryFunnel.demo_completed >= value && primaryFunnel.demo_completed > 0) {
-              convPct = Math.round((value / primaryFunnel.demo_completed) * 100)
-              ofLabel = 'of completed'
-            } else {
-              // Fallback to of MQL
-              const ref = primaryFunnel.mqls
-              convPct = ref > 0 ? Math.round((value / ref) * 100) : 0
-              ofLabel = 'of MQL'
-            }
           } else if (stage.key === 'opportunity') {
             const ref = primaryFunnel.sql
             convPct = ref > 0 ? Math.round((value / ref) * 100) : 0

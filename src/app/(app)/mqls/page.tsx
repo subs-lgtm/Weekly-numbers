@@ -7,7 +7,7 @@ import { useWeek } from '@/lib/week-context'
 import { getDb } from '@/lib/firebase'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { format, subWeeks } from 'date-fns'
-import { TotalMQLSummaryCards, OtherMQLMetrics, QualificationFunnel } from '@/components/mql/MQLScoreCards'
+import { TotalMQLSummaryCards, OtherMQLMetrics, MQLLeadStatusFunnel, MQLLifecycleStatusFunnel } from '@/components/mql/MQLScoreCards'
 import { MQLWoWChart } from '@/components/mql/MQLWoWChart'
 import { MQLMTDChart } from '@/components/mql/MQLMTDChart'
 import { MQLToSQLConversionChart } from '@/components/mql/MQLToSQLConversionChart'
@@ -47,6 +47,10 @@ function MQLPageInner() {
     book_demo_website: number
     stage_breakdown: Record<string, { working: number; linkedinAds: number; website: number; total: number }>
     mql_status_breakdown?: { new: number; working: number; demo_booked: number; demo_completed: number; sql: number; junk: number }
+    lead_status_breakdown?: { new: number; working: number; demo_booked: number; demo_completed: number; junk: number }
+    lead_status_stage_breakdown?: Record<string, { working: number; linkedinAds: number; website: number; total: number }>
+    lifecycle_status_breakdown?: { mql: number; sql: number; opportunity: number; customer: number }
+    lifecycle_status_stage_breakdown?: Record<string, { working: number; linkedinAds: number; website: number; total: number }>
     funnel: Funnel
     lifecycle_stage_funnel?: { total: number; mql_plus: number; sql_plus: number; opportunity_plus: number; customer: number }
     lead_status_funnel?: { total: number; working_plus: number; demo_booked_plus: number; demo_completed_plus: number; associated_with_deal: number }
@@ -234,6 +238,31 @@ function MQLPageInner() {
         updatedBy: 'hubspot',
         updatedAt: null,
       }
+      // Pure single-dimension breakdowns for the two split funnel tables (2026-09-07)
+      d['lead_status_breakdown'] = {
+        value: JSON.stringify(hubspotData.lead_status_breakdown || {}),
+        notes: 'Pure hs_lead_status breakdown: new, working, demo_booked, demo_completed, junk',
+        updatedBy: 'hubspot',
+        updatedAt: null,
+      }
+      d['lead_status_stage_breakdown'] = {
+        value: JSON.stringify(hubspotData.lead_status_stage_breakdown || {}),
+        notes: 'Per-lead-status working/ads/website breakdown',
+        updatedBy: 'hubspot',
+        updatedAt: null,
+      }
+      d['lifecycle_status_breakdown'] = {
+        value: JSON.stringify(hubspotData.lifecycle_status_breakdown || {}),
+        notes: 'Pure lifecyclestage breakdown: mql, sql, opportunity, customer',
+        updatedBy: 'hubspot',
+        updatedAt: null,
+      }
+      d['lifecycle_status_stage_breakdown'] = {
+        value: JSON.stringify(hubspotData.lifecycle_status_stage_breakdown || {}),
+        notes: 'Per-lifecycle-stage working/ads/website breakdown',
+        updatedBy: 'hubspot',
+        updatedAt: null,
+      }
     }
 
     // Auto-calculate MQL → Demo Rate
@@ -371,13 +400,21 @@ function MQLPageInner() {
             <ChannelBreakdownGrid bySourceCategory={hubspotData.by_source_category} total={hubspotData.total} />
           )}
 
-          {/* 4. MQL QUALIFICATION FUNNEL */}
-          <div className="section-label">MQL Qualification Funnel</div>
-          <div className="section-sub">Internal qualification path — feeds the leakage analysis below</div>
-          <QualificationFunnel data={enrichedData} />
+          {/* 4. MQL QUALIFICATION FUNNELS — split into two independent, single-dimension
+              tables (2026-09-07) so a contact's raw hs_lead_status and their lifecyclestage
+              never override one another; see MQLScoreCards.tsx's header comment. */}
+          <div className="section-label">MQL — Lead Status Funnel</div>
+          <div className="section-sub">Based on HubSpot's hs_lead_status field only — where each contact literally sits right now</div>
+          <MQLLeadStatusFunnel data={enrichedData} />
 
-          {/* 5. MQL JOURNEY (LIFECYCLE) */}
-          <div className="section-label">MQL Journey</div>
+          <div className="section-label">MQL — Lifecycle Status Funnel</div>
+          <div className="section-sub">Based on HubSpot's lifecyclestage field only — independent of lead status, feeds the leakage analysis below</div>
+          <MQLLifecycleStatusFunnel data={enrichedData} />
+
+          {/* 5. CONSOLIDATED MQL LIFECYCLE STATUS — was "MQL Journey"; renamed and narrowed to
+              pure lifecyclestage stages (Demo Booked/Completed removed — those are lead-status
+              concepts, now fully covered by the Lead Status funnel above) per explicit request. */}
+          <div className="section-label">Consolidated MQL Lifecycle Status</div>
           <div className="section-sub">The complete lifecycle from Marketing Qualified Lead to closed Customer</div>
           {hubspotData?.funnel && <MQLJourneyFunnel funnel={hubspotData.funnel} monthlyFunnel={monthToDateFunnel ?? undefined} />}
 
