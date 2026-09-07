@@ -8,6 +8,15 @@ import { NextRequest, NextResponse } from 'next/server'
  * map as /api/hubspot/deals-acv, but bucketed by deal CREATE date (not close date),
  * since "pipeline generated" means new pipeline added in a period, not closed in it.
  *
+ * Scoped to "marketing efforts driven" pipeline only, per explicit user request on
+ * 2026-09-07 (the Pipeline Generated Trend chart was pulling deals across every deal
+ * source — HyperScalers, SI Partner, Referral, Partner Lead, Event, etc. — when this page
+ * is meant to reflect marketing's own contribution). Same filter set as
+ * /api/hubspot/sql-to-opportunity-monthly, pulled directly from a HubSpot Deals-list filter
+ * the user provided: deal_source in {Direct, Inbound, Marketing} AND the deal's associated
+ * contact came in via a Book a Demo form (contact_lead_form_type, a deal-level property
+ * HubSpot mirrors from the associated contact).
+ *
  * Two modes:
  *   mode=range (default) — ?start=YYYY-MM-DD&end=YYYY-MM-DD (exclusive end)
  *     Returns aggregate metrics for exactly that window — used for the current-period
@@ -18,6 +27,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 const STUDIO_PIPELINE_ID = '668588091'
+const MARKETING_DEAL_SOURCES = ['Direct', 'Inbound', 'Marketing']
 const CLOSED_LOST_STAGES = new Set(['982194450', '982194451']) // Closed Lost + Dropped
 const CLOSED_WON_STAGE = '982194449'
 
@@ -47,6 +57,8 @@ async function fetchDeals(apiKey: string, createdGteMs: number, createdLtMs: num
           { propertyName: 'pipeline', operator: 'EQ', value: STUDIO_PIPELINE_ID },
           { propertyName: 'createdate', operator: 'GTE', value: createdGteMs.toString() },
           { propertyName: 'createdate', operator: 'LT', value: createdLtMs.toString() },
+          { propertyName: 'deal_source', operator: 'IN', values: MARKETING_DEAL_SOURCES },
+          { propertyName: 'contact_lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' },
         ],
       }],
       properties: ['dealname', 'amount', 'dealstage', 'createdate'],

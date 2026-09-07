@@ -98,7 +98,7 @@ export function PipelineTrendChart({ queryEnd }: Props) {
     <div className="card mt">
       <div className="card-head">
         <span className="card-title">Pipeline Generated Trend</span>
-        <span className="card-note">Weekly pipeline, last 8 weeks — hover a bar for deal details</span>
+        <span className="card-note">Marketing-driven pipeline, weekly, last 8 weeks — hover a bar for deal details</span>
       </div>
       {loading ? (
         <p className="text-[13px] text-[#7A6A60]">Loading from HubSpot…</p>
