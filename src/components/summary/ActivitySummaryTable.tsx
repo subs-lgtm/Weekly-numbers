@@ -6,24 +6,60 @@ import { collection, doc, onSnapshot, setDoc, serverTimestamp, type Unsubscribe 
 import { useAuth } from '@/lib/auth-context'
 import { SECTIONS } from '@/lib/metrics-config'
 
+// Legacy-only type — no longer used to color anything, kept solely so old
+// Firestore fields typecheck for the one-time read-time migration below.
 export type ActivityStatus = 'red' | 'amber' | 'green'
 
+// One of a card's "top 3 activities this week" — plain free text, no status.
+// (Red/yellow/green was removed entirely per explicit request on 2026-09-07;
+// see CLAUDE.md.)
+export type ActivityRow = { text: string }
+
 export type ActivityEntry = {
-  // "Other" rows: single cycling status + one summary line.
+  // Legacy "Other" rows (pre-2026-09-07): single cycling status + one summary
+  // line. Kept only so old data migrates cleanly into `rows` on read — see
+  // getRowsFromEntry(). Never written by current code.
   status?: ActivityStatus
   summary?: string
-  // Category rows: three fixed lines, one per color — a stakeholder can give
-  // a red update, a yellow update, and a green update, independently.
+  // Legacy category rows (pre-2026-09-07): three lines fixed one-per-color.
+  // Kept only for the same migration reason as above.
   redLine?: string
   amberLine?: string
   greenLine?: string
+  // Current shape (2026-09-07+): top 3 free-text activities this week, in
+  // display order. Always exactly 3 once saved.
+  rows?: ActivityRow[]
   owner: string
   updatedBy: string
   updatedAt: any
 }
 
-export const STATUS_LINE_FIELD: Record<ActivityStatus, 'redLine' | 'amberLine' | 'greenLine'> = {
-  red: 'redLine', amber: 'amberLine', green: 'greenLine',
+const EMPTY_ROW: ActivityRow = { text: '' }
+
+// Always returns exactly 3 rows for a card, migrating older Firestore shapes
+// on the fly (display-only — nothing is rewritten until the user edits a
+// row) so nothing written before this format existed appears to vanish.
+// Status is dropped entirely during migration — old red/yellow/green text
+// still shows up, just without a color.
+function getRowsFromEntry(entry: ActivityEntry | undefined): ActivityRow[] {
+  if (entry?.rows && entry.rows.length > 0) {
+    const r = entry.rows.slice(0, 3).map(row => ({ text: row?.text || '' }))
+    while (r.length < 3) r.push({ ...EMPTY_ROW })
+    return r
+  }
+  // Legacy category shape: one fixed-color line each -> becomes the initial 3 rows (text only).
+  if (entry && (entry.redLine || entry.amberLine || entry.greenLine)) {
+    return [
+      { text: entry.redLine || '' },
+      { text: entry.amberLine || '' },
+      { text: entry.greenLine || '' },
+    ]
+  }
+  // Legacy "Other" shape: single cycling status + one summary line.
+  if (entry?.summary) {
+    return [{ text: entry.summary }, { ...EMPTY_ROW }, { ...EMPTY_ROW }]
+  }
+  return [{ ...EMPTY_ROW }, { ...EMPTY_ROW }, { ...EMPTY_ROW }]
 }
 
 // Only show functions that make sense as a one-line weekly activity row.
@@ -114,12 +150,6 @@ const DEFAULT_OWNERS: Record<string, string> = {
   'cat-partners-gsi': 'Kailash',
 }
 
-const STATUS_CONFIG: Record<ActivityStatus, { dot: string; label: string; rowBg: string }> = {
-  red:   { dot: 'bg-[#DC2626]', label: 'Red',    rowBg: 'bg-[rgba(220,38,38,.045)]' },
-  amber: { dot: 'bg-[#D97706]', label: 'Yellow', rowBg: 'bg-[rgba(217,119,6,.045)]' },
-  green: { dot: 'bg-[#16A34A]', label: 'Green',  rowBg: 'bg-[rgba(22,163,74,.045)]' },
-}
-
 function timeAgo(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -199,54 +229,49 @@ function OwnerSelect({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-const COLOR_LINE_ORDER: ActivityStatus[] = ['red', 'amber', 'green']
-
-function ColorLine({
-  status, value, onCommit,
+// One of a card's 3 free-text activity rows — plain text, no status.
+function ActivityRowLine({
+  row, onChangeText,
 }: {
-  status: ActivityStatus
-  value: string
-  onCommit: (v: string) => void
+  row: ActivityRow
+  onChangeText: (text: string) => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(value)
-  const cfg = STATUS_CONFIG[status]
+  const [draft, setDraft] = useState(row.text)
 
   const commit = () => {
     setEditing(false)
-    if (draft.trim() !== value) onCommit(draft.trim())
+    if (draft.trim() !== row.text) onChangeText(draft.trim())
   }
 
   return (
     <div className="flex items-center gap-2">
-      <span className={`block h-[9px] w-[9px] rounded-full flex-shrink-0 ${cfg.dot}`} title={cfg.label} />
       {editing ? (
         <input
           type="text"
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onBlur={commit}
-          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value); setEditing(false) } }}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(row.text); setEditing(false) } }}
           autoFocus
-          placeholder={`${cfg.label} update…`}
+          placeholder="This week's activity…"
           className="flex-1 text-[12.5px] text-[#2A1F1A] bg-white border border-[#6B4C4C] rounded-[6px] px-2 py-0.5 outline-none ring-1 ring-[rgba(107,76,76,.15)]"
         />
       ) : (
         <p
           className="flex-1 text-[12.5px] text-[#6B4C4C] leading-[1.4] cursor-pointer truncate"
-          onDoubleClick={() => { setDraft(value); setEditing(true) }}
+          onDoubleClick={() => { setDraft(row.text); setEditing(true) }}
           title="Double-click to edit"
         >
-          {value || <span className="text-[#D4CBC0] italic">Double-click to add a {cfg.label.toLowerCase()} update…</span>}
+          {row.text || <span className="text-[#D4CBC0] italic">Double-click to add this week's activity…</span>}
         </p>
       )}
     </div>
   )
 }
 
-// Category rows: one card per stakeholder group, with three independent
-// lines (red/yellow/green) instead of a single cycling status — a
-// stakeholder can report a blocker, a caution, and a win in the same week.
+// Category rows: one card per stakeholder group, with 3 free-text "top
+// activities this week" rows.
 function CategoryCard({
   label, sublabel, entry, defaultOwner, onSave,
 }: {
@@ -258,6 +283,12 @@ function CategoryCard({
 }) {
   const updatedAtStr = entry?.updatedAt?.toDate?.()?.toISOString() || null
   const ownerValue = entry?.owner ?? defaultOwner ?? ''
+  const rows = getRowsFromEntry(entry)
+
+  const saveRow = (idx: number, text: string) => {
+    const newRows = rows.map((r, i) => i === idx ? { text } : r)
+    onSave({ rows: newRows })
+  }
 
   return (
     <div className="px-4 py-3 border-b border-[#EEE7DC] last:border-0 hover:brightness-[0.98] transition-colors">
@@ -272,23 +303,13 @@ function CategoryCard({
         </div>
       </div>
       <div className="space-y-1.5 pl-0.5">
-        {COLOR_LINE_ORDER.map(status => {
-          const field = STATUS_LINE_FIELD[status]
-          // Fall back to the old single status+summary shape so nothing
-          // written before this format existed appears to vanish — it shows
-          // in the matching color slot until edited, at which point it's
-          // saved into the new per-line field.
-          const legacyValue = entry?.status === status ? entry?.summary : undefined
-          const value = entry?.[field] || legacyValue || ''
-          return (
-            <ColorLine
-              key={status}
-              status={status}
-              value={value}
-              onCommit={(v) => onSave({ [field]: v })}
-            />
-          )
-        })}
+        {rows.map((row, i) => (
+          <ActivityRowLine
+            key={i}
+            row={row}
+            onChangeText={(text) => saveRow(i, text)}
+          />
+        ))}
       </div>
     </div>
   )
@@ -324,7 +345,7 @@ export function ActivitySummaryTable({ weekStart }: { weekStart: string }) {
   return (
     <div className="rounded-[16px] border border-[#D4CBC0] bg-white overflow-hidden shadow-[0_4px_20px_rgba(40,20,10,.04)]">
       <div>
-        <CategoryHeader label="Categories — one red, one yellow, one green line each" />
+        <CategoryHeader label="Top 3 activities this week — per category" />
         {categoryItems.map(item => (
           <div key={item.key}>
             {item.key === PARTNERS_THEME_FIRST_KEY && (
@@ -344,7 +365,7 @@ export function ActivitySummaryTable({ weekStart }: { weekStart: string }) {
       </div>
 
       <div>
-        <CategoryHeader label="Other Functions — one red, one yellow, one green line each" />
+        <CategoryHeader label="Other Functions — top 3 activities this week" />
         {otherItems.map(item => (
           <CategoryCard
             key={item.key}

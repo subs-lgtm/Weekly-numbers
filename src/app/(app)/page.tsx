@@ -15,131 +15,7 @@ import {
 import { Loader2, TrendingUp, TrendingDown, Minus, Pencil, Check, X } from "lucide-react";
 import { HighPriorityLeads } from "@/components/summary/HighPriorityLeads";
 import { OKRSection } from "@/components/summary/OKRSection";
-import { ActivitySummaryTable, buildActivityItems, useActivitySummary } from "@/components/summary/ActivitySummaryTable";
-
-type RagItem = {
-  id: string;
-  status: "red" | "yellow" | "green";
-  title: string;
-  note: string;
-  createdBy: string;
-  updatedAt?: any;
-};
-
-const RAG_CONFIG = {
-  red: { label: "Red", emoji: "🔴", bg: "bg-[rgba(220,38,38,.06)]", border: "border-[rgba(220,38,38,.25)]", text: "text-[#DC2626]", dot: "bg-[#DC2626]" },
-  yellow: { label: "Yellow", emoji: "🟡", bg: "bg-[rgba(217,119,6,.06)]", border: "border-[rgba(217,119,6,.25)]", text: "text-[#D97706]", dot: "bg-[#D97706]" },
-  green: { label: "Green", emoji: "🟢", bg: "bg-[rgba(22,163,74,.06)]", border: "border-[rgba(22,163,74,.25)]", text: "text-[#16A34A]", dot: "bg-[#16A34A]" },
-};
-
-const AMBER_TO_YELLOW = { red: "red", amber: "yellow", green: "green" } as const;
-
-// Derives the top RAG board directly from Activity Summary entries. Category
-// rows can contribute up to three flags each (one per red/yellow/green line);
-// "Other" rows contribute at most one (their single status + summary).
-function useDerivedRagFlags(weekStart: string) {
-  const { data, loading } = useActivitySummary(weekStart);
-  const items = buildActivityItems();
-
-  const flags: RagItem[] = [];
-  for (const item of items) {
-    const entry = data[item.key];
-    if (!entry) continue;
-
-    // Category-style: up to 3 lines, one per color.
-    const lineFields: Array<["red" | "amber" | "green", string | undefined]> = [
-      ["red", entry.redLine], ["amber", entry.amberLine], ["green", entry.greenLine],
-    ];
-    let hadLine = false;
-    for (const [color, text] of lineFields) {
-      if (text?.trim()) {
-        hadLine = true;
-        flags.push({
-          id: `${item.key}-${color}`,
-          status: AMBER_TO_YELLOW[color],
-          title: item.label,
-          note: text.trim(),
-          createdBy: entry.updatedBy,
-          updatedAt: entry.updatedAt,
-        });
-      }
-    }
-
-    // "Other"-style: single cycling status + summary.
-    if (!hadLine && entry.status && entry.summary?.trim()) {
-      flags.push({
-        id: item.key,
-        status: AMBER_TO_YELLOW[entry.status],
-        title: item.label,
-        note: entry.summary.trim(),
-        createdBy: entry.updatedBy,
-        updatedAt: entry.updatedAt,
-      });
-    }
-  }
-
-  return { flags, loading };
-}
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return ""
-  const diffMs = Date.now() - d.getTime()
-  const mins = Math.floor(diffMs / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  return `${days}d ago`
-}
-
-// Read-only — sourced entirely from Activity Summary entries below. To change
-// what shows here, set a status + write a summary on the matching row in
-// Activity Summary; there's no separate editing surface for these cards.
-function RagCard({ status, flags }: {
-  status: "red" | "yellow" | "green";
-  flags: RagItem[];
-}) {
-  const cfg = RAG_CONFIG[status];
-  const items = flags.filter(f => f.status === status);
-
-  return (
-    <div className={`rounded-[20px] border ${cfg.border} ${cfg.bg} p-5 shadow-[0_4px_20px_rgba(40,20,10,.04)]`}>
-      <div className="flex items-center gap-2 mb-3">
-        <span className={`h-2.5 w-2.5 rounded-full ${cfg.dot}`} />
-        <span className={`text-[13px] font-[600] ${cfg.text} uppercase tracking-[0.1em]`}>{cfg.label}</span>
-        <span className="text-[11px] text-[#7A6A60]">({items.length})</span>
-      </div>
-
-      {items.length === 0 && (
-        <p className="text-[12px] text-[#7A6A60] italic">No {cfg.label.toLowerCase()} items yet — mark a row {cfg.label.toLowerCase()} in Activity Summary below and add a one-line update.</p>
-      )}
-
-      <div className="space-y-2">
-        {items.map(item => (
-          <RagItemRow key={item.id} item={item} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RagItemRow({ item }: { item: RagItem }) {
-  return (
-    <div className="rounded-[12px] bg-white/80 border border-[#D4CBC0]/40 p-3">
-      <span className="text-[13px] font-[600] text-[#2A1F1A]">{item.title}</span>
-      <p className="mt-0.5 text-[12px] text-[#7A6A60]">{item.note}</p>
-      {item.createdBy && (
-        <p className="mt-1 text-[10px] text-[#D4CBC0]">
-          {item.createdBy.split("@")[0]}
-          {item.updatedAt?.toDate && ` · ${timeAgo(item.updatedAt.toDate().toISOString())}`}
-        </p>
-      )}
-    </div>
-  );
-}
+import { ActivitySummaryTable } from "@/components/summary/ActivitySummaryTable";
 
 // Key metrics pulled from across all sections
 const SUMMARY_METRICS: { section: string; key: string; label: string; prefix?: string; isManual?: boolean; isGSI?: boolean }[] = [
@@ -567,7 +443,6 @@ function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string
 
 export default function SummaryPage() {
   const { weekStart: ws, queryStart, queryEnd } = useWeek();
-  const { flags, loading } = useDerivedRagFlags(ws);
 
   const weekDate = new Date(ws + "T00:00:00");
   const weekEnd = endOfWeek(weekDate, { weekStartsOn: 1 });
@@ -577,46 +452,25 @@ export default function SummaryPage() {
       title="Summary"
       description={`Week of ${format(weekDate, "MMM d")} – ${format(weekEnd, "MMM d, yyyy")}`}
     >
-      {loading ? (
-        <div className="flex items-center justify-center py-20 gap-2 text-[#7A6A60]">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-[13px]">Loading…</span>
+      <div className="space-y-6">
+        {/* Key Metrics Overview */}
+        <SummaryMetrics weekStart={ws} queryStart={queryStart} queryEnd={queryEnd} />
+
+        {/* Activity Summary — top 3 activities this week, per category */}
+        <div>
+          <div className="flex items-center justify-between mb-2 px-1">
+            <p className="eyebrow">Activity Summary</p>
+            <p className="caption">Double-click a row to edit</p>
+          </div>
+          <ActivitySummaryTable weekStart={ws} />
         </div>
-      ) : (
-        <div className="space-y-6">
-          {/* RAG Cards — auto-populated from Activity Summary below */}
-          <div className="grid gap-4 md:grid-cols-3">
-            {(["red", "yellow", "green"] as const).map(s => (
-              <RagCard key={s} status={s} flags={flags} />
-            ))}
-          </div>
 
-          {/* Hint */}
-          <div className="px-1">
-            <p className="caption">
-              Set a status and write a one-line update on a row in Activity Summary below — it shows up here automatically, in the matching color.
-            </p>
-          </div>
+        {/* High Priority Leads — synced to date range */}
+        <HighPriorityLeads queryStart={queryStart || ws} queryEnd={queryEnd || format(addWeeks(new Date(ws + 'T00:00:00'), 1), 'yyyy-MM-dd')} />
 
-          {/* Key Metrics Overview */}
-          <SummaryMetrics weekStart={ws} queryStart={queryStart} queryEnd={queryEnd} />
-
-          {/* Activity Summary — one-line status per marketing function */}
-          <div>
-            <div className="flex items-center justify-between mb-2 px-1">
-              <p className="eyebrow">Activity Summary</p>
-              <p className="caption">Click the dot to cycle status · double-click summary to edit</p>
-            </div>
-            <ActivitySummaryTable weekStart={ws} />
-          </div>
-
-          {/* High Priority Leads — synced to date range */}
-          <HighPriorityLeads queryStart={queryStart || ws} queryEnd={queryEnd || format(addWeeks(new Date(ws + 'T00:00:00'), 1), 'yyyy-MM-dd')} />
-
-          {/* OKR's — moved in from its own sidebar page */}
-          <OKRSection />
-        </div>
-      )}
+        {/* OKR's — moved in from its own sidebar page */}
+        <OKRSection />
+      </div>
     </SectionShell>
   );
 }
