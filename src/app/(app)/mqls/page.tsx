@@ -115,12 +115,19 @@ function MQLPageInner() {
       .catch(() => {})
   }, [weekStart, isWeekMode])
 
-  // Fetch month-to-date total (calendar month containing weekStart, up to selected week's end or today) for the Monthly MQLs card
+  // Fetch month-to-date total for the Monthly MQLs card / MQL Journey "this month" bracket.
+  // Deliberately anchored to the REAL current calendar month (today's date), not to whatever
+  // week is selected in the page's date picker — "MTD" means "this month, so far" regardless
+  // of what historical week someone is browsing elsewhere on the page. Previously this used
+  // the selected week's own month as the anchor but still extended the end out to the picker's
+  // queryEnd; when the selected week straddled a month boundary (e.g. a week starting Aug 31
+  // running through Sep 6) that silently produced a cross-month range (Aug 1 - Sep 6) instead
+  // of a single month — fixed per explicit request on 2026-09-07.
   useEffect(() => {
-    const anchor = new Date(weekStart + 'T00:00:00')
-    const monthStart = format(new Date(anchor.getFullYear(), anchor.getMonth(), 1), 'yyyy-MM-dd')
-    const monthEnd = isWeekMode ? queryEnd : format(new Date(), 'yyyy-MM-dd')
-    fetch(`/api/hubspot/mqls?start=${monthStart}&end=${monthEnd}`)
+    const today = new Date()
+    const monthStart = format(new Date(today.getFullYear(), today.getMonth(), 1), 'yyyy-MM-dd')
+    const monthEnd = format(today, 'yyyy-MM-dd') // exclusive end (LT) -> effectively "through yesterday"
+    fetch(`/api/hubspot/mqls?start=${monthStart}&end=${monthEnd}&nocache=1`)
       .then(r => r.json())
       .then(json => {
         if (json && !json.error) {
@@ -129,22 +136,19 @@ function MQLPageInner() {
         }
       })
       .catch(() => {})
-  }, [weekStart, queryEnd, isWeekMode])
+  }, [])
 
-  // Fetch previous month, same day-of-month range (e.g. Aug 1 - Aug 9 vs Jul 1 - Jul 9) for a true MoM delta
+  // Fetch previous calendar month, same day-of-month range as today, for a true MoM delta.
+  // Also anchored to the real current month for the same reason as above.
   useEffect(() => {
-    const anchor = new Date(weekStart + 'T00:00:00')
-    const endDate = isWeekMode ? new Date(queryEnd + 'T00:00:00') : new Date()
-    // Go back 1 day since queryEnd is exclusive
-    if (isWeekMode) endDate.setDate(endDate.getDate() - 1)
-
-    const prevMonthStart = format(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1), 'yyyy-MM-dd')
-    const prevMonthEnd = format(new Date(anchor.getFullYear(), anchor.getMonth() - 1, endDate.getDate()), 'yyyy-MM-dd')
-    fetch(`/api/hubspot/mqls?start=${prevMonthStart}&end=${prevMonthEnd}`)
+    const today = new Date()
+    const prevMonthStart = format(new Date(today.getFullYear(), today.getMonth() - 1, 1), 'yyyy-MM-dd')
+    const prevMonthEnd = format(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()), 'yyyy-MM-dd')
+    fetch(`/api/hubspot/mqls?start=${prevMonthStart}&end=${prevMonthEnd}&nocache=1`)
       .then(r => r.json())
       .then(json => { if (json && !json.error) setPrevMonthToDateTotal(json.total || 0) })
       .catch(() => {})
-  }, [weekStart, queryEnd, isWeekMode])
+  }, [])
 
   // Build enriched data from HubSpot for scorecards
   const enrichedData = useMemo(() => {

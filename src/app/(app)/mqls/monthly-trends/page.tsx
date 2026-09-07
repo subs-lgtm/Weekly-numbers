@@ -120,10 +120,9 @@ export default function MQLMonthlyTrendsPage() {
     async function fetchAll() {
       const rows = await Promise.all(monthsConfig.map(async (m) => {
         try {
-          // MQLs, SQLs, Opportunities, and priority all come from HubSpot here — unlike the
-          // WoW trend charts on the main MQL page, which deliberately source SQL/Opportunity
-          // from the SDR tracker sheet instead (see MQLToSQLConversionChart.tsx /
-          // SQLToOppConversionChart.tsx). Keep this page HubSpot-only per explicit instruction.
+          // MQLs, SQLs, Opportunities, and priority all come from HubSpot here — same source
+          // as both WoW trend charts on the main MQL page (MQLToSQLConversionChart.tsx,
+          // SQLToOppConversionChart.tsx) as of 2026-09-07. Keep this page HubSpot-only.
           const res = await fetch(`/api/hubspot/mqls?start=${m.start}&end=${m.end}&nocache=1`)
           const mqlData = await res.json()
           return {

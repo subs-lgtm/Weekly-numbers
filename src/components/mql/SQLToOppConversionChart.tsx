@@ -1,11 +1,10 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LabelList,
 } from 'recharts'
-import { format, subWeeks, addWeeks } from 'date-fns'
 
 const CARD = 'rounded-[20px] border border-[#D4CBC0] bg-white p-5 shadow-[0_4px_20px_rgba(40,20,10,.07)]'
 const TICK = { fontSize: 11, fill: '#7A6A60' }
@@ -13,7 +12,7 @@ const GRID = { strokeDasharray: '3 3', stroke: '#D4CBC0', strokeOpacity: 0.5, ve
 const fmtPct = (v: number) => `${v}%`
 
 type DataPoint = {
-  week: string
+  month: string
   'SQL → Opportunity %': number
   sql: number
   opportunity: number
@@ -24,7 +23,7 @@ function Tip({ active, payload, label }: any) {
   const p = payload[0]
   const raw: DataPoint = p?.payload
   return (
-    <div className="rounded-[14px] border border-[#D4CBC0] bg-white/95 px-4 py-3 shadow-[0_8px_32px_rgba(40,20,10,.10)] min-w-[170px]">
+    <div className="rounded-[14px] border border-[#D4CBC0] bg-white/95 px-4 py-3 shadow-[0_8px_32px_rgba(40,20,10,.10)] min-w-[190px]">
       <p className="eyebrow mb-2">{label}</p>
       <div className="flex items-center gap-2 text-[13px] text-[#2A1F1A]">
         <span className="h-2 w-2 rounded-full" style={{ background: '#C96A5A' }} />
@@ -43,23 +42,16 @@ function Tip({ active, payload, label }: any) {
   )
 }
 
+// sectionKey/weekStart kept in the prop signature for drop-in compatibility with how this
+// component is mounted on the MQL page, but this chart is deliberately NOT tied to the page's
+// week picker — see the route's own header comment for why (SQL->Opportunity doesn't move fast
+// enough for a weekly view to be meaningful; monthly, trailing off the real current month, is).
 type Props = {
   sectionKey: string
   weekStart: string
 }
 
 export function SQLToOppConversionChart({ sectionKey, weekStart }: Props) {
-  const weekKeys = useMemo(() => {
-    const DATA_START = '2026-03-02'
-    const r: string[] = []
-    const base = new Date(weekStart + 'T00:00:00')
-    for (let i = 5; i >= 0; i--) {
-      const wk = format(subWeeks(base, i), 'yyyy-MM-dd')
-      if (wk >= DATA_START) r.push(wk)
-    }
-    return r
-  }, [weekStart])
-
   const [chartData, setChartData] = useState<DataPoint[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -68,53 +60,54 @@ export function SQLToOppConversionChart({ sectionKey, weekStart }: Props) {
     setLoading(true)
 
     async function fetchAll() {
-      const promises = weekKeys.map(async (wk) => {
-        const end = format(addWeeks(new Date(wk + 'T00:00:00'), 1), 'yyyy-MM-dd')
-        try {
-          // Both SQL and Opportunity now come from the SDR tracker sheet (not HubSpot) — SDRs
-          // mark leads SQL/Qualified Opportunity there directly, often before or without ever
-          // updating the matching HubSpot property, so it's the more complete source for both.
-          // Keeping numerator and denominator on the same source avoids mixing two different
-          // definitions of "SQL" into one ratio.
-          const res = await fetch(`/api/sdr-sql-tracker?start=${wk}&end=${end}`)
-          const data = await res.json()
-          const sql = data.sql || 0
-          const opportunity = data.opp || 0
-          const rate = sql > 0 ? Math.round((opportunity / sql) * 100) : 0
-          return { week: format(new Date(wk + 'T00:00:00'), 'MMM d'), 'SQL → Opportunity %': rate, sql, opportunity }
-        } catch {
-          return { week: format(new Date(wk + 'T00:00:00'), 'MMM d'), 'SQL → Opportunity %': 0, sql: 0, opportunity: 0 }
+      try {
+        // Both SQL and Opportunity come from HubSpot directly (not the SDR tracker sheet) —
+        // Opportunity here means "marketing efforts driven Opportunities": Studio Deals
+        // created that month with deal_source in {Direct/Outbound, Inbound, Marketing} and an
+        // associated Book-a-Demo contact. See /api/hubspot/sql-to-opportunity-monthly's own
+        // header comment for the full filter rationale (from a user-provided HubSpot filter
+        // screenshot, 2026-09-07).
+        const res = await fetch(`/api/hubspot/sql-to-opportunity-monthly?months=4&nocache=1`)
+        const data = await res.json()
+        const rows: DataPoint[] = (data.months || []).map((m: any) => ({
+          month: m.label,
+          'SQL → Opportunity %': m.rate,
+          sql: m.sql,
+          opportunity: m.opportunity,
+        }))
+        if (!cancelled) {
+          setChartData(rows)
+          setLoading(false)
         }
-      })
-
-      const results = await Promise.all(promises)
-      if (!cancelled) {
-        setChartData(results)
-        setLoading(false)
+      } catch {
+        if (!cancelled) {
+          setChartData([])
+          setLoading(false)
+        }
       }
     }
 
     fetchAll()
     return () => { cancelled = true }
-  }, [weekKeys])
+  }, [])
 
   if (loading) {
     return (
       <div className={CARD}>
-        <p className="eyebrow mb-4">WoW Trend — SQL → Opportunity %</p>
-        <p className="text-[13px] text-[#7A6A60]">Loading from SDR tracker…</p>
+        <p className="eyebrow mb-4">Monthly Trend — SQL → Opportunity %</p>
+        <p className="text-[13px] text-[#7A6A60]">Loading from HubSpot…</p>
       </div>
     )
   }
 
   return (
     <div className={CARD}>
-      <p className="eyebrow mb-1">WoW Trend — SQL → Opportunity %</p>
-      <p className="text-[12px] text-[#7A6A60] mb-4">Hover each point for SQL &amp; Opportunity counts · from SDR tracker sheet</p>
+      <p className="eyebrow mb-1">Monthly Trend — SQL → Opportunity %</p>
+      <p className="text-[12px] text-[#7A6A60] mb-4">Last 4 months · Hover for SQL &amp; marketing-driven Opportunity counts · from HubSpot</p>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 36, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid {...GRID} />
-          <XAxis dataKey="week" tick={TICK} axisLine={false} tickLine={false} />
+          <XAxis dataKey="month" tick={TICK} axisLine={false} tickLine={false} />
           <YAxis tick={TICK} axisLine={false} tickLine={false} tickFormatter={fmtPct} domain={[0, (dataMax: number) => Math.min(Math.ceil(dataMax * 1.2), 100)]} />
           <Tooltip content={<Tip />} />
           <Legend wrapperStyle={{ fontSize: 11, color: '#7A6A60', paddingTop: 8 }} />
