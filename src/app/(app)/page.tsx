@@ -24,7 +24,10 @@ const SUMMARY_METRICS: { section: string; key: string; label: string; prefix?: s
   { section: 'mqls', key: 'mqls_total', label: "Total MQL's" },
   { section: 'mqls', key: 'qualified_mqls', label: "Qualified MQL's" },
   { section: 'mqls', key: 'sql_count', label: 'SQLs' },
-  { section: 'mqls', key: 'demo_booked', label: 'Demo Booked' },
+  // Demo Booked card removed 2026-09-14 per explicit request -- keep only Meetings Booked
+  // below. Data fetch (curr.funnel?.demo_booked -> 'mqls:demo_booked') is left in place
+  // upstream in useSummaryData() since it's cheap and harmless unused state; only the card
+  // definition is removed here.
   { section: 'mqls', key: 'demo_completed', label: 'Demo Completed' },
   { section: 'mqls', key: 'opportunity_count', label: 'Opportunity' },
   { section: 'mqls', key: 'customer_count', label: 'Customer' },
