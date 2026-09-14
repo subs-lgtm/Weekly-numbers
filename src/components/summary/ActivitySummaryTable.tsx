@@ -79,7 +79,7 @@ export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-
 // everything listed in sectionKeys. The underlying sections keep their own
 // dedicated pages/keys elsewhere in the app; this only changes how their
 // weekly status gets tracked and rolled up on the Summary page.
-const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[] }[] = [
+export const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[] }[] = [
   { key: 'cat-ads', label: 'Ads', sectionKeys: ['ads'] },
   { key: 'cat-gsi-founder-amp', label: 'GSI/SI & Founder Amplification', sectionKeys: ['gsi-si-founder-amplification'] },
   { key: 'cat-seo-content', label: 'SEO / Content', sectionKeys: ['seo', 'content', 'playbooks'] },
@@ -98,7 +98,7 @@ const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[] }[] =
 ]
 
 // The first key here gets a "Partners" sub-header rendered above it in the category list.
-const PARTNERS_THEME_FIRST_KEY = 'cat-partners-hyperscalers'
+export const PARTNERS_THEME_FIRST_KEY = 'cat-partners-hyperscalers'
 
 export type ActivityItem = { key: string; label: string; sublabel?: string }
 
@@ -120,8 +120,10 @@ export function buildActivityItems(): ActivityItem[] {
   return [...categoryItems, ...otherItems]
 }
 
-// Team roster — from the reference mockup. Editable per row via dropdown.
-const OWNER_OPTIONS = [
+// Team roster — from the reference mockup. Editable per row via dropdown. Exported so other
+// manually-owned-per-channel panels (e.g. WeeklyRagStatus.tsx) reuse the same roster instead
+// of maintaining a second copy that can drift.
+export const OWNER_OPTIONS = [
   'Mothilal', 'Shreya', 'Shifa', 'Kailash',
   'Prince', 'Pranamya', 'Ani', 'Ankita',
   'Vaibhavi', 'Kunj', 'Leonard', 'Vaibhav', 'Nirupam', 'Apoorva', 'Faraaz', 'Rida', 'Alma', 'Arnav', 'Anuskha',
@@ -129,8 +131,9 @@ const OWNER_OPTIONS = [
 ]
 
 // Default owner per function — matches the reference mockup where a function was shown there.
-// Sections not present in the mockup are left unassigned until manually set.
-const DEFAULT_OWNERS: Record<string, string> = {
+// Sections not present in the mockup are left unassigned until manually set. Exported for the
+// same reason as OWNER_OPTIONS above.
+export const DEFAULT_OWNERS: Record<string, string> = {
   ads: 'Mothilal',
   seo: 'Shreya',
   email: 'Shifa',
@@ -163,7 +166,7 @@ const DEFAULT_OWNERS: Record<string, string> = {
   'cat-social': 'Prince', // confirmed by user 2026-09-07 (over Kailash, the Reddit owner)
 }
 
-function timeAgo(iso: string | null): string {
+export function timeAgo(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (isNaN(d.getTime())) return '—'
@@ -213,7 +216,7 @@ export function useActivitySummary(weekStart: string) {
   return { data, loading, saveEntry }
 }
 
-function OwnerSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function OwnerSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [editing, setEditing] = useState(false)
 
   if (editing) {
@@ -242,11 +245,14 @@ function OwnerSelect({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-// One of a card's 3 free-text activity rows — plain text, no status.
+// One of a card's 3 free-text activity rows — plain text, no status. Numbered 1/2/3 (per
+// explicit request, 2026-09-14) so it reads unambiguously as "the top 3 planned this week",
+// not an arbitrary open-ended list.
 function ActivityRowLine({
-  row, onChangeText,
+  row, index, onChangeText,
 }: {
   row: ActivityRow
+  index: number
   onChangeText: (text: string) => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -259,6 +265,7 @@ function ActivityRowLine({
 
   return (
     <div className="flex items-center gap-2">
+      <span className="text-[11px] text-[#A99A8E] font-[600] w-3.5 flex-shrink-0">{index + 1}.</span>
       {editing ? (
         <input
           type="text"
@@ -267,7 +274,7 @@ function ActivityRowLine({
           onBlur={commit}
           onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(row.text); setEditing(false) } }}
           autoFocus
-          placeholder="This week's activity…"
+          placeholder="Planned activity…"
           className="flex-1 text-[12.5px] text-[#2A1F1A] bg-white border border-[#6B4C4C] rounded-[6px] px-2 py-0.5 outline-none ring-1 ring-[rgba(107,76,76,.15)]"
         />
       ) : (
@@ -276,7 +283,7 @@ function ActivityRowLine({
           onDoubleClick={() => { setDraft(row.text); setEditing(true) }}
           title="Double-click to edit"
         >
-          {row.text || <span className="text-[#D4CBC0] italic">Double-click to add this week's activity…</span>}
+          {row.text || <span className="text-[#D4CBC0] italic">Double-click to add a planned activity…</span>}
         </p>
       )}
     </div>
@@ -320,6 +327,7 @@ function CategoryCard({
           <ActivityRowLine
             key={i}
             row={row}
+            index={i}
             onChangeText={(text) => saveRow(i, text)}
           />
         ))}
@@ -358,7 +366,7 @@ export function ActivitySummaryTable({ weekStart }: { weekStart: string }) {
   return (
     <div className="rounded-[16px] border border-[#D4CBC0] bg-white overflow-hidden shadow-[0_4px_20px_rgba(40,20,10,.04)]">
       <div>
-        <CategoryHeader label="Top 3 activities this week — per category" />
+        <CategoryHeader label="Top 3 planned activities this week — per category" />
         {categoryItems.map(item => (
           <div key={item.key}>
             {item.key === PARTNERS_THEME_FIRST_KEY && (
@@ -378,7 +386,7 @@ export function ActivitySummaryTable({ weekStart }: { weekStart: string }) {
       </div>
 
       <div>
-        <CategoryHeader label="Other Functions — top 3 activities this week" />
+        <CategoryHeader label="Other Functions — top 3 planned activities this week" />
         {otherItems.map(item => (
           <CategoryCard
             key={item.key}
