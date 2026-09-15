@@ -274,13 +274,24 @@ export async function GET(req: NextRequest) {
       customer: { working: 0, linkedinAds: 0, website: 0, total: 0 },
     }
 
+    // "Intro Call ___" is this portal's current name for the exact same demo-call process as
+    // "Demo ___" -- confirmed directly with the user on 2026-09-15 after a real discrepancy
+    // (Meetings Booked: 15, Demo Completed/No Show: both 0 for the same week) traced back to
+    // the team having switched to this vocabulary without the dashboard's status sets being
+    // updated to match. Recognized as synonyms throughout so nothing tracked under the newer
+    // names goes uncounted. Mapping follows the existing Demo-family precedent: "Intro
+    // Disqualified" sits in DEMO_BOOKED_STATUSES only (a call that happened, tracked as a
+    // bad-fit outcome) -- same treatment as "Demo Completed - Disqualified", which is already
+    // in DEMO_BOOKED_STATUSES but deliberately excluded from DEMO_COMPLETED_STATUSES.
     const DEMO_BOOKED_STATUSES = new Set([
       'Demo Booked', 'Demo Completed', 'Demo Completed - PLG',
       'Demo Completed - Disqualified', 'Demo no show',
       'Demo Cancelled by Client', 'Demo Completed - Ghosting',
+      'Intro Call Booked', 'Intro Call Completed', 'Intro Call No-Show',
+      'Intro Qualified', 'Intro Disqualified',
     ])
-    const DEMO_COMPLETED_STATUSES = new Set(['Demo Completed', 'Demo Completed - PLG'])
-    const DEMO_NO_SHOW_STATUSES = new Set(['Demo no show'])
+    const DEMO_COMPLETED_STATUSES = new Set(['Demo Completed', 'Demo Completed - PLG', 'Intro Call Completed', 'Intro Qualified'])
+    const DEMO_NO_SHOW_STATUSES = new Set(['Demo no show', 'Intro Call No-Show'])
     // In THIS portal, lifecyclestage's internal values map to custom display labels that don't
     // match the internal names — confirmed directly against the portal's property definition:
     //   lead                    -> "Lead"
