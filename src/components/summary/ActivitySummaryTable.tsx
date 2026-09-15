@@ -126,7 +126,7 @@ export function buildActivityItems(): ActivityItem[] {
 export const OWNER_OPTIONS = [
   'Mothilal', 'Shreya', 'Shifa', 'Kailash',
   'Prince', 'Pranamya', 'Ani', 'Ankita',
-  'Vaibhavi', 'Kunj', 'Leonard', 'Vaibhav', 'Nirupam', 'Apoorva', 'Faraaz', 'Rida', 'Alma', 'Arnav', 'Anuskha',
+  'Vaibhavi', 'Kunj', 'Leonard', 'Vaibhav', 'Nirupam', 'Apoorva', 'Faraaz', 'Rida', 'Alma', 'Arnav', 'Anushka',
   'Rishabh', 'Deepyanti', 'Deepankar',
 ]
 
@@ -149,7 +149,7 @@ export const DEFAULT_OWNERS: Record<string, string> = {
   podcasts: 'Ani',
   'pr-news': 'Pranamya',
   'analyst-relations': 'Pranamya',
-  'cat-partners-hyperscalers': 'Anuskha',
+  'cat-partners-hyperscalers': 'Anushka',
   'cat-partners-emerging': 'Apoorva',
   'cat-partners-gsi': 'Kailash',
   // Category-card defaults (2026-09-07 fix) — CategoryCard looks up DEFAULT_OWNERS by the
