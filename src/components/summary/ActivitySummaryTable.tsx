@@ -72,7 +72,10 @@ function getRowsFromEntry(entry: ActivityEntry | undefined): ActivityRow[] {
 // label happened to say 'GSI/SI', unrelated to the real GSI & SI Partners category card above
 // it) — excluded here (not deleted from metrics-config, its own /git-agent page is untouched)
 // so it's a one-line change to bring back if this rollup is wanted again later.
-export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads', 'agentpreneur', 'reachout-activity', 'git-agent'].includes(s.key))
+// docs-tutorials ("DevRel & Documentations & Tutorials"): removed from Summary 2026-09-15 per
+// explicit request — excluded here (not deleted from metrics-config, its own page untouched)
+// so it's a one-line change to bring back later.
+export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads', 'agentpreneur', 'reachout-activity', 'git-agent', 'docs-tutorials'].includes(s.key))
 
 // Each category collapses multiple existing sections into a SINGLE trackable
 // row — one status dot, one summary, one owner, one Firestore doc — covering
