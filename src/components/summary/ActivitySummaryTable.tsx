@@ -75,7 +75,12 @@ function getRowsFromEntry(entry: ActivityEntry | undefined): ActivityRow[] {
 // docs-tutorials ("DevRel & Documentations & Tutorials"): removed from Summary 2026-09-15 per
 // explicit request — excluded here (not deleted from metrics-config, its own page untouched)
 // so it's a one-line change to bring back later.
-export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads', 'agentpreneur', 'reachout-activity', 'git-agent', 'docs-tutorials'].includes(s.key))
+// studio-signups/architect/lyzr-gpt: previously merged into the "Products" category card,
+// which was replaced by "Hiring" 2026-09-16 per explicit request ("nothing much to add here").
+// Excluded individually too (not deleted from metrics-config) so removing the "Products"
+// category doesn't cause these 3 to reappear as separate Other Functions rows — it's a
+// one-line change to bring any of them back later if wanted.
+export const ACTIVITY_SECTIONS = SECTIONS.filter(s => !['mqls', 'leads', 'agent-studio-leads', 'agentpreneur', 'reachout-activity', 'git-agent', 'docs-tutorials', 'studio-signups', 'architect', 'lyzr-gpt'].includes(s.key))
 
 // Each category collapses multiple existing sections into a SINGLE trackable
 // row — one status dot, one summary, one owner, one Firestore doc — covering
@@ -89,7 +94,6 @@ export const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[
   // No dedicated dashboard page for ABM — this is a tracking-only row (empty sectionKeys is
   // fine: buildActivityItems()'s sublabel is skipped when there's nothing to join).
   { key: 'cat-abm', label: 'ABM', sectionKeys: [] },
-  { key: 'cat-products', label: 'Products', sectionKeys: ['studio-signups', 'architect', 'lyzr-gpt'] },
   { key: 'cat-social', label: 'Social & Influencers', sectionKeys: ['social-influencers', 'reddit'] },
   { key: 'cat-website', label: 'Website', sectionKeys: ['pages', 'ui-ux', 'pr-news'] },
   // Partners theme — split into one card per owner instead of one merged card, but kept
@@ -98,6 +102,12 @@ export const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[
   { key: 'cat-partners-hyperscalers', label: 'Hyperscalers & Hardware', sectionKeys: ['partners-aws'] },
   { key: 'cat-partners-emerging', label: 'Emerging Partners', sectionKeys: ['partners-emerging'] },
   { key: 'cat-partners-gsi', label: 'GSI & SI', sectionKeys: ['partners-gsi'] },
+  // Was "Products" (studio-signups/architect/lyzr-gpt) — replaced 2026-09-16 per explicit
+  // request ("nothing much to add here... change this section to hiring instead of product...
+  // move this to the last section"). No dedicated dashboard page for Hiring — tracking-only
+  // row, same pattern as ABM above. Deliberately last in this array so it renders as the last
+  // category card.
+  { key: 'cat-hiring', label: 'Hiring', sectionKeys: [] },
 ]
 
 // The first key here gets a "Partners" sub-header rendered above it in the category list.
@@ -163,7 +173,7 @@ export const DEFAULT_OWNERS: Record<string, string> = {
   // Only added here where the underlying sections agree on one owner (or there's just one
   // section) — see CLAUDE.md for the categories deliberately left out due to a conflict
   // (cat-social, cat-website) or no existing signal at all (cat-gsi-founder-amp, cat-abm,
-  // cat-products) — don't guess an owner for those without asking first.
+  // cat-hiring) — don't guess an owner for those without asking first.
   'cat-ads': 'Mothilal',
   'cat-seo-content': 'Shreya',
   'cat-social': 'Prince', // confirmed by user 2026-09-07 (over Kailash, the Reddit owner)
