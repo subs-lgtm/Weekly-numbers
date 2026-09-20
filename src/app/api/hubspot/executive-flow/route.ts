@@ -5,22 +5,34 @@ import { NextRequest, NextResponse } from 'next/server'
  *
  * Section 1 of the Executive Dashboard — "Business Flow Performance".
  *
- * METHODOLOGY (corrected per explicit user instruction — an earlier version used
- * hs_v2_date_entered_* event-date properties, which produced technically-defensible but
- * unverifiable numbers the user couldn't reproduce in HubSpot's own UI; see CLAUDE.md and
- * executive-cohorts/route.ts for the full story): this route now defines the cohort for a
- * period EXACTLY like /api/hubspot/mqls — `createdate` in range + `lead_form_type CONTAINS_TOKEN
- * 'Book a Demo'` (the dashboard's one MQL definition) + the standard @lyzr.ai exclusion — then
- * reads that SAME cohort's CURRENT lifecyclestage (SQL_EXACT / OPP_EXACT / customer, exact
- * match, same as mqls/route.ts) for the SQLs/Opportunities/Customers Won figures. This has
- * already been cross-validated cell-by-cell against the user's own HubSpot CSV export for
- * March-August, with only the known EDT/UTC boundary rounding (±1) as any difference at all —
- * do not revert to hs_v2_date_entered_* without discussing it first.
+ * METHODOLOGY — split data model per explicit user instruction on 2026-09-18 ("mql sql you can
+ * take from the contacts level in hubspot but opportunities customer won those things you must
+ * take from the opportunity stage"):
  *
- * "Historical and immutable" now means: the createdate-based cohort SIZE never changes (a
- * contact's createdate is permanent), but the SQL/Opportunity/Customer breakdown for that cohort
- * is a live read of current lifecyclestage and will legitimately update as those specific
- * contacts progress — which is correct and matches how the Cohort Funnel Table below now works.
+ * - MQLs Created / SQLs Created: CONTACT-based, unchanged from the prior version — cohort is
+ *   `createdate` in range + `lead_form_type CONTAINS_TOKEN 'Book a Demo'` + the standard
+ *   @lyzr.ai exclusion (the dashboard's one MQL definition, see CLAUDE.md), with SQL read off
+ *   that same cohort's CURRENT lifecyclestage (SQL_EXACT, exact match, same as mqls/route.ts).
+ * - Opportunities Created / Customers Won: DEAL-based, NOT contact lifecyclestage. Prior to this
+ *   change both were read from the contact's `lifecyclestage` (OPP_EXACT / 'customer'), which
+ *   produced a backwards, non-shrinking chart — e.g. July 2026 showed Opportunities Created: 2
+ *   but Customers Won: 16, because "Opportunities Created" was exact-current-stage-only (a
+ *   contact that already progressed to Customer no longer counts) and "Customers Won" trusted
+ *   the raw lifecyclestage label with no check against a real Closed Won deal (the same
+ *   data-hygiene gap CLAUDE.md documents for Jeff Asiedu/Jose Diaz — lifecyclestage=customer
+ *   with no real Closed Won deal behind it). Fixed by switching both to the actual Deal record:
+ *   `countDealFlow()` pulls deals in the Studio Deals pipeline (668588091), scoped to
+ *   "marketing efforts driven" per explicit user confirmation on 2026-09-18 — same filter as
+ *   /api/hubspot/sql-to-opportunity-monthly and /api/hubspot/pipeline-trend: `deal_source IN
+ *   {Direct, Inbound, Marketing}` AND `contact_lead_form_type CONTAINS_TOKEN 'Book a Demo'`.
+ *   Both metrics are bucketed by deal CREATEDATE (also confirmed explicitly) — "Opportunities
+ *   Created" is the count of such deals created in the period; "Customers Won" is the subset of
+ *   that SAME created-in-period deal set currently at dealstage Closed Won (982194449). This
+ *   means a deal created in month X but won in month X+2 counts as a Customer Won in month X,
+ *   not month X+2 — deliberately consistent with MQL/SQL/Opportunity all being anchored to
+ *   createdate, not an event/close date. Do not switch "Customers Won" to closedate-bucketing
+ *   without asking again — it was explicitly considered and rejected in favor of createdate
+ *   consistency.
  *
  * Query params:
  *   ?start=YYYY-MM-DD&end=YYYY-MM-DD  (end exclusive, same convention as /api/hubspot/mqls)
@@ -31,11 +43,19 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 
-// Same portal-specific label mismatch as mqls/route.ts — internal 'opportunity' = SQL label,
-// internal '249550600' = Opportunity label. Exact-current-stage match, not cumulative — matches
-// HubSpot's own "Lifecycle stage is X" UI filter (see CLAUDE.md's 57-vs-75 writeup).
+// Same portal-specific label mismatch as mqls/route.ts — internal 'opportunity' = SQL label.
+// Exact-current-stage match, not cumulative — matches HubSpot's own "Lifecycle stage is X" UI
+// filter (see CLAUDE.md's 57-vs-75 writeup). Only used for SQLs now — Opportunity/Customer come
+// from the Deal object, see fetchMarketingDeals() below.
 const SQL_EXACT = new Set(['opportunity'])
-const OPP_EXACT = new Set(['249550600'])
+
+// Deal-based Opportunity/Customer Won — same "marketing efforts driven" scope as
+// /api/hubspot/pipeline-trend and /api/hubspot/sql-to-opportunity-monthly. Do not conflate with
+// the contact-lifecyclestage OPP_EXACT definition used elsewhere on this dashboard — this route
+// deliberately uses the Deal record instead, per explicit user instruction.
+const STUDIO_PIPELINE_ID = '668588091'
+const MARKETING_DEAL_SOURCES = ['Direct', 'Inbound', 'Marketing']
+const CLOSED_WON_STAGE = '982194449'
 
 type FlowKey = 'mql' | 'sql' | 'opportunity' | 'customer'
 
@@ -65,7 +85,7 @@ async function getCached(key: string, end: string): Promise<any | null> {
   try {
     const db = getCacheDb()
     if (!db) return null
-    const doc = await db.collection('executive_flow_cache_v2').doc(key).get()
+    const doc = await db.collection('executive_flow_cache_v3').doc(key).get()
     if (!doc.exists) return null
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
@@ -81,11 +101,12 @@ async function setCache(key: string, result: any): Promise<void> {
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('executive_flow_cache_v2').doc(key).set({ result, cachedAt: new Date() })
+    await db.collection('executive_flow_cache_v3').doc(key).set({ result, cachedAt: new Date() })
   } catch {}
 }
 
-async function countAllFlow(apiKey: string, startMs: number, endMs: number) {
+/** Contact-based MQLs/SQLs — unchanged from before, see file-header note. */
+async function countContactFlow(apiKey: string, startMs: number, endMs: number) {
   const results: any[] = []
   let after: string | undefined
   while (true) {
@@ -118,14 +139,61 @@ async function countAllFlow(apiKey: string, startMs: number, endMs: number) {
     await new Promise(r => setTimeout(r, 150))
   }
 
-  let sqlsCreated = 0, opportunitiesCreated = 0, customersWon = 0
+  let sqlsCreated = 0
   for (const c of results) {
-    const stage = c.properties?.lifecyclestage || ''
-    if (SQL_EXACT.has(stage)) sqlsCreated++
-    if (OPP_EXACT.has(stage)) opportunitiesCreated++
-    if (stage === 'customer') customersWon++
+    if (SQL_EXACT.has(c.properties?.lifecyclestage || '')) sqlsCreated++
   }
-  return { mqlsCreated: results.length, sqlsCreated, opportunitiesCreated, customersWon }
+  return { mqlsCreated: results.length, sqlsCreated }
+}
+
+/**
+ * Deal-based Opportunities Created / Customers Won — see file-header note. Mirrors
+ * pipeline-trend/route.ts's fetchDeals() exactly (same pipeline/source/lead-form-type filter).
+ */
+async function countDealFlow(apiKey: string, createdGteMs: number, createdLtMs: number) {
+  const deals: any[] = []
+  let after: string | undefined
+  while (true) {
+    const body: any = {
+      filterGroups: [{
+        filters: [
+          { propertyName: 'pipeline', operator: 'EQ', value: STUDIO_PIPELINE_ID },
+          { propertyName: 'createdate', operator: 'GTE', value: createdGteMs.toString() },
+          { propertyName: 'createdate', operator: 'LT', value: createdLtMs.toString() },
+          { propertyName: 'deal_source', operator: 'IN', values: MARKETING_DEAL_SOURCES },
+          { propertyName: 'contact_lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' },
+        ],
+      }],
+      properties: ['dealstage'],
+      limit: 100,
+    }
+    if (after) body.after = after
+    const res = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/deals/search`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      if (res.status === 429) { await new Promise(r => setTimeout(r, 1100)); continue }
+      throw new Error(`HubSpot deals search failed: ${res.status}`)
+    }
+    const data = await res.json()
+    deals.push(...(data.results || []))
+    if (!data.paging?.next?.after || data.results?.length === 0) break
+    after = data.paging.next.after
+    await new Promise(r => setTimeout(r, 150))
+  }
+
+  const customersWon = deals.filter(d => d.properties?.dealstage === CLOSED_WON_STAGE).length
+  return { opportunitiesCreated: deals.length, customersWon }
+}
+
+async function countAllFlow(apiKey: string, startMs: number, endMs: number) {
+  const [contactFlow, dealFlow] = await Promise.all([
+    countContactFlow(apiKey, startMs, endMs),
+    countDealFlow(apiKey, startMs, endMs),
+  ])
+  return { ...contactFlow, ...dealFlow }
 }
 
 function pctChange(current: number, previous: number): { pct: number | null; direction: 'up' | 'down' | 'flat' } {
