@@ -8,7 +8,7 @@ import {
   Handshake, Cloud, Briefcase, MessageSquare,
   LogOut, PenLine, BarChart2, Globe, Share2, Mic, Cog,
   Palette, FlaskConical, Video, BookOpen, DollarSign, Newspaper, BookMarked, Star, Award, Bot, Radio,
-  TrendingUp,
+  TrendingUp, ClipboardCheck,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
@@ -16,89 +16,56 @@ import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth-context";
+import { summaryNav, navGroups } from "@/lib/nav-channels";
 
 type NavItem = { title: string; url: string; icon: typeof LayoutDashboard };
 
-const summary: NavItem[] = [
-  { title: "Summary", url: "/", icon: LayoutDashboard },
-  { title: "Executive Dashboard", url: "/executive", icon: TrendingUp },
-  { title: "MQLs", url: "/mqls", icon: Target },
-  { title: "MQL Monthly Trends", url: "/mqls/monthly-trends", icon: BarChart2 },
-  { title: "Leads", url: "/leads", icon: Users },
-  { title: "Agent Studio Leads", url: "/agent-studio-leads", icon: Bot },
-];
+// Icons are attached here (UI concern) on top of the shared data in nav-channels.ts (the single
+// source of truth also consumed by the Channel Scorecard) — keep url spelling in sync with that
+// file; a lookup miss falls back to BarChart2 rather than crashing.
+const ICONS: Record<string, typeof LayoutDashboard> = {
+  "/": LayoutDashboard,
+  "/executive": TrendingUp,
+  "/mqls": Target,
+  "/mqls/monthly-trends": BarChart2,
+  "/leads": Users,
+  "/agent-studio-leads": Bot,
+  "/channel-scorecard": ClipboardCheck,
+  "/seo": Search,
+  "/content": PenLine,
+  "/ads": Megaphone,
+  "/ads/performance-report": BarChart2,
+  "/gsi-si-founder-amplification": Radio,
+  "/pages": Globe,
+  "/ui-ux": Palette,
+  "/pr-news": Newspaper,
+  "/architect": Building2,
+  "/docs-tutorials": BookMarked,
+  "/social-influencers": Share2,
+  "/reddit": MessageSquare,
+  "/email": Mail,
+  "/events": Calendar,
+  "/webinars": Video,
+  "/podcasts": Mic,
+  "/content-engine": Cog,
+  "/video-pipeline": Video,
+  "/collaterals": BookOpen,
+  "/experiments-videos": FlaskConical,
+  "/spotlight-cvc": Star,
+  "/analyst-relations": BarChart2,
+  "/g2": Award,
+  "/partners-emerging": Handshake,
+  "/partners-aws": Cloud,
+  "/partners-gsi": Briefcase,
+  "/meetings-tracker": Calendar,
+  "/sales-performance": BarChart2,
+  "/reachout-activity": Target,
+}
+const withIcons = (items: { title: string; url: string }[]): NavItem[] =>
+  items.map((i) => ({ ...i, icon: ICONS[i.url] ?? BarChart2 }))
 
-const groups: { label: string; items: NavItem[] }[] = [
-  {
-    label: "SEO",
-    items: [
-      { title: "SEO", url: "/seo", icon: Search },
-      { title: "Content / Blogs", url: "/content", icon: PenLine },
-    ],
-  },
-  {
-    label: "Performance Channel",
-    items: [
-      { title: "Ads", url: "/ads", icon: Megaphone },
-      { title: "3-Month Ads Performance", url: "/ads/performance-report", icon: BarChart2 },
-      { title: "GSI/SI & Founder Amplification", url: "/gsi-si-founder-amplification", icon: Radio },
-    ],
-  },
-  {
-    label: "Website",
-    items: [
-      { title: "Website", url: "/pages", icon: Globe },
-      { title: "UI/UX Design", url: "/ui-ux", icon: Palette },
-      { title: "PR (News Channels)", url: "/pr-news", icon: Newspaper },
-    ],
-  },
-  {
-    label: "DevRel",
-    items: [
-      { title: "DevRel", url: "/architect", icon: Building2 },
-      { title: "Docs & Tutorials", url: "/docs-tutorials", icon: BookMarked },
-    ],
-  },
-  {
-    label: "Social & Influencers",
-    items: [
-      { title: "Social & Influencers", url: "/social-influencers", icon: Share2 },
-      { title: "Reddit", url: "/reddit", icon: MessageSquare },
-    ],
-  },
-  {
-    label: "Marketing",
-    items: [
-      { title: "Email Marketing", url: "/email", icon: Mail },
-      { title: "Events", url: "/events", icon: Calendar },
-      { title: "Webinars", url: "/webinars", icon: Video },
-      { title: "Podcasts & Reach Out", url: "/podcasts", icon: Mic },
-      { title: "Content Engine", url: "/content-engine", icon: Cog },
-      { title: "Video Pipeline", url: "/video-pipeline", icon: Video },
-      { title: "Collaterals", url: "/collaterals", icon: BookOpen },
-      { title: "Experiments & Videos", url: "/experiments-videos", icon: FlaskConical },
-      { title: "Spotlight CVC", url: "/spotlight-cvc", icon: Star },
-      { title: "Analyst Relations", url: "/analyst-relations", icon: BarChart2 },
-      { title: "G2", url: "/g2", icon: Award },
-    ],
-  },
-  {
-    label: "Partners",
-    items: [
-      { title: "Emerging Partners", url: "/partners-emerging", icon: Handshake },
-      { title: "AWS & Hyperscalers", url: "/partners-aws", icon: Cloud },
-      { title: "GSI & SI", url: "/partners-gsi", icon: Briefcase },
-    ],
-  },
-  {
-    label: "Sales",
-    items: [
-      { title: "Meetings Tracker",      url: "/meetings-tracker",      icon: Calendar },
-      { title: "Sales Performance",     url: "/sales-performance",     icon: BarChart2 },
-      { title: "Reachout Activity",     url: "/reachout-activity",     icon: Target },
-    ],
-  },
-];
+const summary: NavItem[] = withIcons(summaryNav)
+const groups: { label: string; items: NavItem[] }[] = navGroups.map((g) => ({ label: g.label, items: withIcons(g.items) }))
 
 const ADMIN_EMAILS = ['nirupam@lyzr.ai', 'ani@lyzr.ai', 'vaibhav@lyzr.ai', 'pranamya@lyzr.ai']
 

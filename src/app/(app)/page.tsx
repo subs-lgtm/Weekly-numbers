@@ -16,7 +16,6 @@ import { Loader2, TrendingUp, TrendingDown, Minus, Pencil, Check, X } from "luci
 import { HighPriorityLeads } from "@/components/summary/HighPriorityLeads";
 import { OKRSection } from "@/components/summary/OKRSection";
 import { ActivitySummaryTable } from "@/components/summary/ActivitySummaryTable";
-import { WeeklyRagStatus } from "@/components/summary/WeeklyRagStatus";
 
 // Key metrics pulled from across all sections
 const SUMMARY_METRICS: { section: string; key: string; label: string; prefix?: string; isManual?: boolean; isGSI?: boolean }[] = [
@@ -457,19 +456,6 @@ export default function SummaryPage() {
       description={`Week of ${format(weekDate, "MMM d")} – ${format(weekEnd, "MMM d, yyyy")}`}
     >
       <div className="space-y-6">
-        {/* Weekly RAG Status — fully isolated from Activity Summary below (own Firestore
-            collection, own data shape, freely added by anyone). Re-added 2026-09-14 per
-            explicit request, then simplified same-day to a plain growing list per explicit
-            follow-up ("don't give something like status per category"); see
-            WeeklyRagStatus.tsx's header comment. */}
-        <div>
-          <div className="flex items-center justify-between mb-2 px-1">
-            <p className="eyebrow">Weekly RAG Status</p>
-            <p className="caption">Add a one-line item to any bucket — builds up through the week · independent of Activity Summary below</p>
-          </div>
-          <WeeklyRagStatus weekStart={ws} />
-        </div>
-
         {/* Key Metrics Overview */}
         <SummaryMetrics weekStart={ws} queryStart={queryStart} queryEnd={queryEnd} />
 
