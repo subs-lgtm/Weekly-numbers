@@ -197,6 +197,16 @@ export async function GET(req: NextRequest) {
     const byFormType: Record<string, number> = {}
     const bySourceCategory: Record<string, number> = {}
     const formTypeBreakdown: Record<string, { working: number; ads: number; website: number }> = {}
+    // "Contains" attribution for Partner Form only — per explicit user instruction 2026-09-21
+    // ("these partner leads will be having 2 to 3 other lead form types as well like email or a
+    // LinkedIn integrated form but that should be counted under partner leads"). byFormType above
+    // stays exact-primary-only (formType.split(';')[0]) since MQL/Book-a-Demo counting elsewhere
+    // in this dashboard is load-bearing on that exact definition (see CLAUDE.md) — this is a
+    // separate, additive counter that credits a contact to 'Partner Form' whenever it appears
+    // ANYWHERE in their semicolon-separated lead_form_type, not just when it's first. Scoped to
+    // just Partner Form (not e.g. AWS Partner Form) since that's specifically what was reported.
+    const CONTAINS_ATTRIBUTED_FORMS = new Set(['Partner Form'])
+    const byFormTypeContains: Record<string, number> = {}
 
     // contacts_by_priority — populated as we loop, returned for click-through drill-down
     const contactsByPriority: Record<string, Array<{
@@ -388,6 +398,14 @@ export async function GET(req: NextRequest) {
       const normalizedForm = primaryForm === 'Pre-Built Agents' ? 'Book a Demo' : primaryForm
       byFormType[normalizedForm] = (byFormType[normalizedForm] || 0) + 1
       bySourceCategory[sourceCat] = (bySourceCategory[sourceCat] || 0) + 1
+
+      // See CONTAINS_ATTRIBUTED_FORMS comment above — credits Partner Form even when it's not
+      // the first token in a multi-value lead_form_type (e.g. "Book a Demo;Partner Form").
+      for (const key of CONTAINS_ATTRIBUTED_FORMS) {
+        if (contactDetail.formTypes.includes(key)) {
+          byFormTypeContains[key] = (byFormTypeContains[key] || 0) + 1
+        }
+      }
 
       // Per-form-type breakdown: working / ads / website
       if (!formTypeBreakdown[normalizedForm]) formTypeBreakdown[normalizedForm] = { working: 0, ads: 0, website: 0 }
@@ -668,6 +686,7 @@ export async function GET(req: NextRequest) {
       book_demo_website: bookDemoWebsite,
       stage_breakdown: stageBreakdown,
       by_form_type: byFormType,
+      by_form_type_contains: byFormTypeContains,
       form_type_breakdown: formTypeBreakdown,
       by_source_category: bySourceCategory,
       by_source_funnel: bySourceFunnel,

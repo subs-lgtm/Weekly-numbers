@@ -29,17 +29,14 @@ function SharedWeekHeader({ weeks, widthRef }: { weeks: ScorecardWeek[]; widthRe
       <div ref={widthRef} className="min-w-0 flex-1">
       <div className="flex" style={{ paddingLeft: LEFT_GUTTER, paddingRight: RIGHT_PAD }}>
         {weeks.map((w) => {
-          const status = getWeekStatus(w)
           return (
             <div key={w.weekNumber} className="flex-1 text-center">
-              <div className="flex items-center justify-center gap-1.5">
-                <span className="text-[10.5px] font-[600] uppercase tracking-[.06em] text-foreground">W{w.weekNumber}</span>
-                {status === "current" && (
-                  <span className="rounded-full px-1.5 py-0.5 text-[9px] font-[700]" style={{ background: "var(--ring)", color: "var(--primary)" }}>
-                    This week
-                  </span>
-                )}
-              </div>
+              {/* "This week" badge removed per explicit request 2026-09-21 — a week is scoreable
+                  the moment it starts (current OR past, per getWeekStatus), but badging it "This
+                  week" right as it opens reads as "score it now," which doesn't make sense before
+                  the week has actually happened. The current-week tint on the chart column itself
+                  stays (still useful as a quiet visual anchor), just not this explicit label. */}
+              <span className="text-[10.5px] font-[600] uppercase tracking-[.06em] text-foreground">W{w.weekNumber}</span>
               <div className="mt-0.5 text-[10px] text-muted-foreground">{formatWeekRangeLabel(w)}</div>
             </div>
           )

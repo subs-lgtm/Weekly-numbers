@@ -42,9 +42,12 @@ export const navGroups: { label: string; items: NavItemData[] }[] = [
   },
   {
     label: "DevRel",
+    // "Docs & Tutorials" removed from the sidebar (and, since the Channel Scorecard derives its
+    // channel list from this same array, from the scorecard too) per explicit request
+    // 2026-09-21 — the page itself (/docs-tutorials) is untouched, just unlinked here, same
+    // convention as the other "removed from nav, page kept" entries documented in CLAUDE.md.
     items: [
       { title: "DevRel", url: "/architect" },
-      { title: "Docs & Tutorials", url: "/docs-tutorials" },
     ],
   },
   {
@@ -96,11 +99,26 @@ export const navGroups: { label: string; items: NavItemData[] }[] = [
  * i.e. everything in `navGroups` (SEO, Performance Channel, Website, DevRel, Social &
  * Influencers, Marketing, Partners, Sales). "3-Month Ads Performance" stays excluded — it's a
  * reporting sub-page of Ads, not a distinct channel (confirmed with user on 2026-09-20, before
- * the widening — that specific exclusion was never in question).
+ * the widening — that specific exclusion was never in question). "Collaterals" excluded
+ * 2026-09-21 per explicit request — scorecard-only (unlike "Docs & Tutorials" the same day,
+ * this one stays in the sidebar/Marketing group; only the screenshot shown was the scorecard
+ * row, so only the scorecard listing was touched).
  */
-const SCORECARD_EXCLUDED_URLS = new Set(["/ads/performance-report"])
+const SCORECARD_EXCLUDED_URLS = new Set(["/ads/performance-report", "/collaterals"])
 
 export type ScorecardChannel = { id: string; title: string; group: string }
+
+/**
+ * Tracking-only channels with no dedicated sidebar page — same pattern as Activity Summary's
+ * "ABM"/"Hiring" category cards (CATEGORY_GROUPS in ActivitySummaryTable.tsx). Added 2026-09-21
+ * per explicit request: "Marketing Automation (HubSpot)" and "Automation". These have fixed ids
+ * (not derived from a URL) — since they're never removed from navGroups, this is the only place
+ * their id is defined; keep it stable so existing Firestore score history doesn't orphan.
+ */
+const EXTRA_SCORECARD_CHANNELS: ScorecardChannel[] = [
+  { id: "marketing-automation-hubspot", title: "Marketing Automation (HubSpot)", group: "Automation" },
+  { id: "automation", title: "Automation", group: "Automation" },
+]
 
 /** channel id = the nav url with leading slash stripped, e.g. "/seo" -> "seo" */
 export function urlToChannelId(url: string): string {
@@ -115,5 +133,6 @@ export function getScorecardChannels(): ScorecardChannel[] {
       channels.push({ id: urlToChannelId(item.url), title: item.title, group: group.label })
     }
   }
+  channels.push(...EXTRA_SCORECARD_CHANNELS)
   return channels
 }

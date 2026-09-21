@@ -7,10 +7,18 @@ import { cn } from '@/lib/utils'
 type LeadContact = {
   id: string
   formType: string
+  formTypes?: string[]
   lifecycleStage: string
   source: string
   status: string
 }
+
+// Categories where a contact should count if the key appears ANYWHERE in their (semicolon-
+// separated) lead_form_type, not just when it's the first/primary value — currently just
+// Partner Form, per explicit request 2026-09-21 (a partner lead often also carries "Email Form"
+// or a LinkedIn-integrated form type ahead of it, which was silently dropping it from this
+// category's own "Conversion to MQL" contact set even after the count itself was fixed upstream).
+const CONTAINS_MATCH_KEYS = new Set(['Partner Form'])
 
 type PeriodData = {
   contacts: LeadContact[]
@@ -75,7 +83,9 @@ export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevM
       const monthlyGrowth = calculateGrowth(currMonthCount, prevMonthCount)
 
       // 4. Conversion to MQL (current week)
-      const catContacts = currWeek.contacts.filter(c => c.formType === def.key)
+      const catContacts = currWeek.contacts.filter(c =>
+        CONTAINS_MATCH_KEYS.has(def.key) ? (c.formTypes?.includes(def.key) ?? c.formType === def.key) : c.formType === def.key
+      )
       const catMqls = getMqlsCount(catContacts)
       const convRate = catContacts.length > 0 ? Math.round((catMqls / catContacts.length) * 100) : 0
 

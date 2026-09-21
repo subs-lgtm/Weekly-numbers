@@ -102,12 +102,26 @@ export const CATEGORY_GROUPS: { key: string; label: string; sectionKeys: string[
   { key: 'cat-partners-hyperscalers', label: 'Hyperscalers & Hardware', sectionKeys: ['partners-aws'] },
   { key: 'cat-partners-emerging', label: 'Emerging Partners', sectionKeys: ['partners-emerging'] },
   { key: 'cat-partners-gsi', label: 'GSI & SI', sectionKeys: ['partners-gsi'] },
+  // Re-added 2026-09-21 per explicit request ("you have removed devrel from the updates
+  // section please add that back"). 'architect' is the underlying section KEY for the
+  // sidebar's "DevRel" nav item (its own SECTIONS entry in metrics-config.ts is labeled
+  // "Architect", not "DevRel" — that mismatch is why this needs its own CATEGORY_GROUPS entry
+  // with an explicit label, rather than just removing 'architect' from the ACTIVITY_SECTIONS
+  // exclusion list below and letting it fall through to "Other Functions" as "Architect").
+  // 'architect' stays in that exclusion list on purpose — this category card is now the ONLY
+  // place it's meant to render, so it must not also reappear there.
+  { key: 'cat-devrel', label: 'DevRel', sectionKeys: ['architect'] },
   // Was "Products" (studio-signups/architect/lyzr-gpt) — replaced 2026-09-16 per explicit
   // request ("nothing much to add here... change this section to hiring instead of product...
   // move this to the last section"). No dedicated dashboard page for Hiring — tracking-only
-  // row, same pattern as ABM above. Deliberately last in this array so it renders as the last
-  // category card.
+  // row, same pattern as ABM above.
   { key: 'cat-hiring', label: 'Hiring', sectionKeys: [] },
+  // Added 2026-09-21 per explicit request — 2 more tracking-only rows (no dedicated dashboard
+  // page, same pattern as ABM/Hiring above), deliberately last so they render as the final
+  // category cards. Also added as scoreable channels in nav-channels.ts's
+  // EXTRA_SCORECARD_CHANNELS for the Channel Scorecard page — keep both in sync if renamed.
+  { key: 'cat-marketing-automation', label: 'Marketing Automation (HubSpot)', sectionKeys: [] },
+  { key: 'cat-automation', label: 'Automation', sectionKeys: [] },
 ]
 
 // The first key here gets a "Partners" sub-header rendered above it in the category list.
@@ -177,6 +191,13 @@ export const DEFAULT_OWNERS: Record<string, string> = {
   'cat-ads': 'Mothilal',
   'cat-seo-content': 'Shreya',
   'cat-social': 'Prince', // confirmed by user 2026-09-07 (over Kailash, the Reddit owner)
+  // Added 2026-09-21 per explicit request. OwnerSelect is a single-value dropdown (see below) —
+  // 'Mothilal & Nirupam' is a two-owner card, so it deliberately won't match any OWNER_OPTIONS
+  // entry; it still displays correctly as plain text, it just won't pre-select anything sensible
+  // if someone opens the dropdown to change it. Revisit if this card needs real multi-owner
+  // support later.
+  'cat-marketing-automation': 'Mothilal & Nirupam',
+  'cat-automation': 'Nirupam',
 }
 
 export function timeAgo(iso: string | null): string {

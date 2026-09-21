@@ -7,7 +7,7 @@ import {
   Building2, Megaphone,
   Handshake, Cloud, Briefcase, MessageSquare,
   LogOut, PenLine, BarChart2, Globe, Share2, Mic, Cog,
-  Palette, FlaskConical, Video, BookOpen, DollarSign, Newspaper, BookMarked, Star, Award, Bot, Radio,
+  Palette, FlaskConical, Video, BookOpen, DollarSign, Newspaper, Star, Award, Bot, Radio,
   TrendingUp, ClipboardCheck,
 } from "lucide-react";
 import {
@@ -40,7 +40,6 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/ui-ux": Palette,
   "/pr-news": Newspaper,
   "/architect": Building2,
-  "/docs-tutorials": BookMarked,
   "/social-influencers": Share2,
   "/reddit": MessageSquare,
   "/email": Mail,

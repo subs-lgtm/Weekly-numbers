@@ -124,14 +124,25 @@ function LeadsPageInner() {
     )
   }
 
+  // Partner Form specifically should count a contact whenever "Partner Form" appears ANYWHERE in
+  // their (semicolon-separated) lead_form_type, not just when it's the first/primary value — per
+  // explicit request 2026-09-21. The API's `by_form_type` stays primary-only (load-bearing for
+  // the Book-a-Demo MQL definition elsewhere); `by_form_type_contains` is the additive counter
+  // for this one form type. Only overriding the 'Partner Form' key so every other category card
+  // keeps its existing primary-only count.
+  const withPartnerFormContains = (byFormType: Record<string, number> | undefined, byFormTypeContains: Record<string, number> | undefined) => ({
+    ...(byFormType || {}),
+    'Partner Form': byFormTypeContains?.['Partner Form'] ?? byFormType?.['Partner Form'] ?? 0,
+  })
+
   return (
     <div className="space-y-6">
       {/* 1. Lead Categories Performance */}
       <LeadCategoriesPerformance
-        currWeek={{ contacts: currWeekContacts, byFormType: data.currWeek.by_form_type || {} }}
-        prevWeek={{ contacts: prevWeekContacts, byFormType: data.prevWeek.by_form_type || {} }}
-        currMonth={{ contacts: currMonthContacts, byFormType: data.currMonth.by_form_type || {} }}
-        prevMonth={{ contacts: prevMonthContacts, byFormType: data.prevMonth.by_form_type || {} }}
+        currWeek={{ contacts: currWeekContacts, byFormType: withPartnerFormContains(data.currWeek.by_form_type, data.currWeek.by_form_type_contains) }}
+        prevWeek={{ contacts: prevWeekContacts, byFormType: withPartnerFormContains(data.prevWeek.by_form_type, data.prevWeek.by_form_type_contains) }}
+        currMonth={{ contacts: currMonthContacts, byFormType: withPartnerFormContains(data.currMonth.by_form_type, data.currMonth.by_form_type_contains) }}
+        prevMonth={{ contacts: prevMonthContacts, byFormType: withPartnerFormContains(data.prevMonth.by_form_type, data.prevMonth.by_form_type_contains) }}
       />
 
       {/* 2. Comparison cards — WoW and MoM */}
