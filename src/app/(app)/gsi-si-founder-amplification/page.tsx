@@ -5,7 +5,7 @@ import { SECTION_MAP } from '@/lib/metrics-config'
 import { TaskTextBoxes } from '@/components/shared/TaskTextBoxes'
 import { useWeek } from '@/lib/week-context'
 
-const EMBED_URL = 'https://lyzr-ads-2.lovable.app/'
+const EMBED_URL = 'https://lyzrads-dashboard-eight.vercel.app/'
 
 export default function Page() {
   const { weekStart } = useWeek()

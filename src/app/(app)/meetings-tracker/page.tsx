@@ -79,12 +79,19 @@ export default function MeetingsTrackerPage() {
         const json = await res.json()
         if (json && !json.error && json.by_form_type) {
           const EXCLUDE = new Set(['Book a Demo', 'Email Form', 'Pre-Built Agents'])
+          // Partner Form specifically counts a contact whenever "Partner Form" appears ANYWHERE
+          // in their lead_form_type (see by_form_type_contains on /api/hubspot/mqls), not just
+          // when it's the first/primary value — same rule applied to the Leads page's Partners
+          // card on 2026-09-21, extended here per explicit follow-up request. Every other form
+          // type here keeps its existing primary-only count.
+          const partnerFormContains = json.by_form_type_contains?.['Partner Form']
           const filtered: Record<string, number> = {}
           let total = 0
           for (const [form, count] of Object.entries(json.by_form_type as Record<string, number>)) {
             if (!EXCLUDE.has(form)) {
-              filtered[form] = count
-              total += count
+              const value = form === 'Partner Form' && partnerFormContains !== undefined ? partnerFormContains : count
+              filtered[form] = value
+              total += value
             }
           }
           setNonCalLeads({ byFormType: filtered, total })
