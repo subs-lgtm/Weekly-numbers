@@ -39,7 +39,6 @@ package-lock.json
 # excluded: contain hardcoded service-account private key / API keys
 # (see chat for full list — recommend rotating the key and moving to env vars)
 scripts/
-src/app/api/youtube-followers/route.ts
 src/app/api/budget-spends/route.ts
 src/app/api/influencers/route.ts
 src/app/api/studio-signups/route.ts
