@@ -46,4 +46,3 @@ src/app/api/studio-signups/route.ts
 src/app/api/summary-metrics/route.ts
 src/app/api/youtube-views/route.ts
 src/app/api/seo/data/route.ts
-src/app/api/linkedin-followers/route.ts
