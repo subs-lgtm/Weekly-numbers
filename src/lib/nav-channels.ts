@@ -110,14 +110,17 @@ export type ScorecardChannel = { id: string; title: string; group: string }
 
 /**
  * Tracking-only channels with no dedicated sidebar page — same pattern as Activity Summary's
- * "ABM"/"Hiring" category cards (CATEGORY_GROUPS in ActivitySummaryTable.tsx). Added 2026-09-21
- * per explicit request: "Marketing Automation (HubSpot)" and "Automation". These have fixed ids
- * (not derived from a URL) — since they're never removed from navGroups, this is the only place
+ * "ABM"/"Hiring" category cards (CATEGORY_GROUPS in ActivitySummaryTable.tsx). "Marketing
+ * Automation (HubSpot)"/"Automation" added 2026-09-21 per explicit request. "Hiring" added
+ * 2026-09-29 per explicit follow-up request — mirrors the Activity Summary "Hiring" card
+ * (cat-hiring), same tracking-only treatment, no dedicated page. These have fixed ids (not
+ * derived from a URL) — since they're never removed from navGroups, this is the only place
  * their id is defined; keep it stable so existing Firestore score history doesn't orphan.
  */
 const EXTRA_SCORECARD_CHANNELS: ScorecardChannel[] = [
   { id: "marketing-automation-hubspot", title: "Marketing Automation (HubSpot)", group: "Automation" },
   { id: "automation", title: "Automation", group: "Automation" },
+  { id: "hiring", title: "Hiring", group: "Hiring" },
 ]
 
 /** channel id = the nav url with leading slash stripped, e.g. "/seo" -> "seo" */
