@@ -100,12 +100,15 @@ export function LeadsComparisonCards({ weekStart }: Props) {
         fetch(`/api/hubspot/mqls?start=${prevMonthStart}&end=${prevMonthEnd}&mode=all`).then(r => r.json()).catch(() => ({ total: 0 })),
       ])
       if (!cancelled) {
-        // Exclude Book a Demo forms and Agent Studio — keeping only top-of-funnel informational leads
+        // Exclude Book a Demo forms, Agent Studio, and Webinar (bulk batches that aren't
+        // comparable to an actual form fill — added 2026-09-28) — keeping only top-of-funnel
+        // informational leads
         const subtractBookDemoAndStudio = (d: any) => {
-          const bd = (d?.by_form_type?.['Book a Demo'] || 0) + 
-                     (d?.by_form_type?.['Email Form'] || 0) + 
+          const bd = (d?.by_form_type?.['Book a Demo'] || 0) +
+                     (d?.by_form_type?.['Email Form'] || 0) +
                      (d?.by_form_type?.['Pre-Built Agents'] || 0) +
-                     (d?.by_form_type?.['Agent Studio'] || 0)
+                     (d?.by_form_type?.['Agent Studio'] || 0) +
+                     (d?.by_form_type?.['Webinar'] || 0)
           return (d?.total || 0) - bd
         }
         setWowCurrent(subtractBookDemoAndStudio(wowCurr))

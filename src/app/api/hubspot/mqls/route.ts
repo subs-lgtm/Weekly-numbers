@@ -699,6 +699,12 @@ export async function GET(req: NextRequest) {
         sql,
         opportunity,
         customer,
+        // Deal-verified Closed Won count, only populated when ?includeClosedWon=1 was passed
+        // (see closedWonContactIds above) — checks the contact's actual associated deal(s) in
+        // the Studio Deals pipeline for dealstage === Closed Won, rather than trusting the
+        // contact's own lifecyclestage label. Per the documented gotcha in CLAUDE.md,
+        // lifecyclestage='customer' does not reliably mean a real Closed Won deal exists.
+        closed_won_count: includeClosedWon ? closedWonContactIds.length : undefined,
       },
       // Pure lifecyclestage-based funnel (independent of hs_lead_status) — for the
       // "Lifecycle Stage Leakage" analysis

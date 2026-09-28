@@ -9,6 +9,11 @@ type Funnel = {
   sql: number
   opportunity: number
   customer: number
+  /** Deal-verified Closed Won count (contact's associated deal actually reached Closed Won in
+   *  the Studio Deals pipeline) — only present when the funnel was fetched with
+   *  ?includeClosedWon=1. Preferred over `customer` (raw lifecyclestage) for the "Customer" row
+   *  below, since lifecyclestage='customer' doesn't reliably mean a real deal closed. */
+  closed_won_count?: number
 }
 
 type Props = { funnel: Funnel; monthlyFunnel?: Funnel }
@@ -31,7 +36,7 @@ const TOOLTIPS: Record<string, string> = {
   mqls: "Total MQLs: Calculated from HubSpot contact creation events. Includes informational sign-ups (like Playbook downloads or Masterclass signups) and direct demo bookings, but excludes Agent Studio developer registrations and internal tests.",
   sql: "SQL: Sales Qualified Leads. Contacts whose current HubSpot lifecycle stage is SQL.",
   opportunity: "Opportunity: Contacts whose current HubSpot lifecycle stage is Opportunity (associated with an active sales opportunity in the Deals pipeline).",
-  customer: "Customer: Closed-Won customers. Contacts who have successfully signed and converted to paying customers."
+  customer: "Customer: Closed-Won customers, deal-verified — the contact's associated deal in the Studio Deals pipeline has actually reached the Closed Won stage (not just the contact's own lifecycle stage label, which can say \"Customer\" without a matching closed deal)."
 }
 
 /** "Consolidated MQL Lifecycle Status" section (was "MQL Journey") — pure lifecyclestage
@@ -51,8 +56,12 @@ export function MQLJourneyFunnel({ funnel, monthlyFunnel }: Props) {
       </div>
       <div className="funnel-wrap">
         {STAGES.map((stage, i) => {
-          const value = primaryFunnel[stage.key]
-          const weeklyValue = secondaryFunnel?.[stage.key]
+          const value: number = (stage.key === 'customer' && primaryFunnel.closed_won_count !== undefined
+            ? primaryFunnel.closed_won_count
+            : primaryFunnel[stage.key]) ?? 0
+          const weeklyValue: number | undefined = stage.key === 'customer' && secondaryFunnel?.closed_won_count !== undefined
+            ? secondaryFunnel.closed_won_count
+            : secondaryFunnel?.[stage.key]
           const pct = Math.max((value / maxVal) * 100, value > 0 ? 4 : 0)
 
           // Dynamic conversion calculation against each stage's natural denominator

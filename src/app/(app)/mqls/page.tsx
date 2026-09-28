@@ -33,7 +33,7 @@ function MQLPageInner() {
     demoBooked: boolean; demoCompleted: boolean; demoNoShow: boolean
   }
   type ContactsByPriority = { high: PriorityContact[]; medium: PriorityContact[]; low: PriorityContact[]; unknown: PriorityContact[] }
-  type Funnel = { mqls: number; meeting_booked: number; demo_booked: number; demo_completed: number; demo_no_show: number; sql: number; opportunity: number; customer: number }
+  type Funnel = { mqls: number; meeting_booked: number; demo_booked: number; demo_completed: number; demo_no_show: number; sql: number; opportunity: number; customer: number; closed_won_count?: number }
 
   // Live HubSpot data
   const [hubspotData, setHubspotData] = useState<{
@@ -131,7 +131,7 @@ function MQLPageInner() {
     const today = new Date()
     const monthStart = format(new Date(today.getFullYear(), today.getMonth(), 1), 'yyyy-MM-dd')
     const monthEnd = format(today, 'yyyy-MM-dd') // exclusive end (LT) -> effectively "through yesterday"
-    fetch(`/api/hubspot/mqls?start=${monthStart}&end=${monthEnd}&nocache=1`)
+    fetch(`/api/hubspot/mqls?start=${monthStart}&end=${monthEnd}&includeClosedWon=1&nocache=1`)
       .then(r => r.json())
       .then(json => {
         if (json && !json.error) {

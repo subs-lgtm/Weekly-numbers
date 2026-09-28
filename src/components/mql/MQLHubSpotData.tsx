@@ -30,6 +30,7 @@ type HubSpotMQLData = {
     sql: number
     opportunity: number
     customer: number
+    closed_won_count?: number
   }
   lifecycle_stage_funnel?: { total: number; mql_plus: number; sql_plus: number; opportunity_plus: number; customer: number }
   lead_status_funnel?: { total: number; working_plus: number; demo_booked_plus: number; demo_completed_plus: number; associated_with_deal: number }
@@ -130,7 +131,7 @@ export function MQLHubSpotData({ weekStart, queryStart, queryEnd, onData, includ
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/hubspot/mqls?start=${apiStart}&end=${apiEnd}${includePipeline ? '&includePipeline=1' : ''}&nocache=1`)
+      const res = await fetch(`/api/hubspot/mqls?start=${apiStart}&end=${apiEnd}${includePipeline ? '&includePipeline=1' : ''}&includeClosedWon=1&nocache=1`)
       const json = await res.json()
       if (json.error) throw new Error(json.error)
       setData(json)

@@ -64,11 +64,13 @@ function HubSpotWoWChart({ weekStart, title, actualLabel = 'Actual Leads', goalL
         try {
           const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&mode=all`)
           const data = await res.json()
-          // Exclude Book a Demo forms and Agent Studio signups
-          const excluded = (data.by_form_type?.['Book a Demo'] || 0) + 
-                           (data.by_form_type?.['Email Form'] || 0) + 
+          // Exclude Book a Demo forms, Agent Studio signups, and Webinar signups (bulk batches
+          // that aren't comparable to an actual form fill — added 2026-09-28)
+          const excluded = (data.by_form_type?.['Book a Demo'] || 0) +
+                           (data.by_form_type?.['Email Form'] || 0) +
                            (data.by_form_type?.['Pre-Built Agents'] || 0) +
-                           (data.by_form_type?.['Agent Studio'] || 0)
+                           (data.by_form_type?.['Agent Studio'] || 0) +
+                           (data.by_form_type?.['Webinar'] || 0)
           return { week: format(new Date(wk + 'T00:00:00'), 'MMM d'), [actualLabel]: (data.total || 0) - excluded, [goalLabel]: 0 }
         } catch {
           return { week: format(new Date(wk + 'T00:00:00'), 'MMM d'), [actualLabel]: 0, [goalLabel]: 0 }

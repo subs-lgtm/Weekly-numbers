@@ -36,7 +36,9 @@ export function LeadFunnelCard({ contacts }: Props) {
 
   // 2. Compute funnel counts
   const funnelData = useMemo(() => {
-    const EXCLUDED_FORMS = new Set(['Book a Demo', 'Email Form', 'Pre-Built Agents'])
+    // Webinar added 2026-09-28: bulk webinar-signup batches (thousands in a single week) aren't
+    // comparable to an actual informational-lead form fill and were swamping this card's Lead count.
+    const EXCLUDED_FORMS = new Set(['Book a Demo', 'Email Form', 'Pre-Built Agents', 'Webinar'])
 
     // Lead: Count of contacts whose primary form type is informational (excludes direct Book a Demo forms)
     const leadsList = nonStudio.filter(c => !EXCLUDED_FORMS.has(c.formType))
