@@ -54,8 +54,8 @@ export const navGroups: { label: string; items: NavItemData[] }[] = [
     label: "Social & Influencers",
     items: [
       { title: "Social & Influencers", url: "/social-influencers" },
-      { title: "Reddit Legacy", url: "/reddit" },
       { title: "Reddit, LinkedIn, Twitter", url: "/reddit-linkedin-twitter" },
+      { title: "Reddit Legacy", url: "/reddit" },
     ],
   },
   {
