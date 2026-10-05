@@ -455,3 +455,10 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
   (associated deal's `dealstage`), not raw `lifecyclestage='customer'` — this has now been
   wrong often enough (Executive Dashboard, Consolidated MQL Lifecycle Status) that it should be
   the starting assumption, not something re-discovered each time.
+
+32. **2026-10-05 (evening) — Webinar leads rule on the Leads page.** The Webinars card / lead table count only Webinar-primary
+    leads with `lyzr_lead_score >= 50` that are NOT registrations for in-person Luma events. HubSpot has no in-person flag, so
+    `IN_PERSON_LUMA_EVENT` in `src/app/api/hubspot/mqls/route.ts` matches the event title in `lsa_lead_source`
+    ("Luma Registration: <title>"): Agent Labs, AI Made Me Do It, Off the Grid/private sail, Sail with Siva, leadership dinner,
+    AI Leaders' Table/Off the Record. Edit that regex when new in-person events appear. API returns `webinar_qualified`
+    and a per-contact `webinarExcluded`; `by_form_type.Webinar` stays RAW on purpose (Total Leads subtracts it). Cache: mqls `v6`.
