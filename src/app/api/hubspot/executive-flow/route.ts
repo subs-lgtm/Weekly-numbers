@@ -13,26 +13,16 @@ import { NextRequest, NextResponse } from 'next/server'
  *   `createdate` in range + `lead_form_type CONTAINS_TOKEN 'Book a Demo'` + the standard
  *   @lyzr.ai exclusion (the dashboard's one MQL definition, see CLAUDE.md), with SQL read off
  *   that same cohort's CURRENT lifecyclestage (SQL_EXACT, exact match, same as mqls/route.ts).
- * - Opportunities Created / Customers Won: DEAL-based, NOT contact lifecyclestage. Prior to this
- *   change both were read from the contact's `lifecyclestage` (OPP_EXACT / 'customer'), which
- *   produced a backwards, non-shrinking chart — e.g. July 2026 showed Opportunities Created: 2
- *   but Customers Won: 16, because "Opportunities Created" was exact-current-stage-only (a
- *   contact that already progressed to Customer no longer counts) and "Customers Won" trusted
- *   the raw lifecyclestage label with no check against a real Closed Won deal (the same
- *   data-hygiene gap CLAUDE.md documents for Jeff Asiedu/Jose Diaz — lifecyclestage=customer
- *   with no real Closed Won deal behind it). Fixed by switching both to the actual Deal record:
- *   `countDealFlow()` pulls deals in the Studio Deals pipeline (668588091), scoped to
- *   "marketing efforts driven" per explicit user confirmation on 2026-09-18 — same filter as
- *   /api/hubspot/sql-to-opportunity-monthly and /api/hubspot/pipeline-trend: `deal_source IN
- *   {Direct, Inbound, Marketing}` AND `contact_lead_form_type CONTAINS_TOKEN 'Book a Demo'`.
- *   Both metrics are bucketed by deal CREATEDATE (also confirmed explicitly) — "Opportunities
- *   Created" is the count of such deals created in the period; "Customers Won" is the subset of
- *   that SAME created-in-period deal set currently at dealstage Closed Won (982194449). This
- *   means a deal created in month X but won in month X+2 counts as a Customer Won in month X,
- *   not month X+2 — deliberately consistent with MQL/SQL/Opportunity all being anchored to
- *   createdate, not an event/close date. Do not switch "Customers Won" to closedate-bucketing
- *   without asking again — it was explicitly considered and rejected in favor of createdate
- *   consistency.
+ * - Opportunities Created / Customers Won: DEAL-verified, never the contact's lifecyclestage.
+ *   UPDATED 2026-10-04 per explicit request to match the Cohort Funnel Table exactly: same
+ *   contact cohort as MQLs (created in the period via Book a Demo), and a contact counts as an
+ *   Opportunity only if it has a marketing-sourced Studio Deals deal (Inbound, Marketing,
+ *   Partner Lead, SI Partner, HyperScalar, Event; Direct/Outbound, Referral, Repeat Customer and
+ *   blank source excluded). Customers Won = those whose qualifying deal is Closed Won. All of
+ *   that logic lives in src/lib/marketing-opportunities.ts, shared with executive-cohorts, so
+ *   the two can't drift. (The earlier version bucketed deals by deal createdate with
+ *   deal_source IN {Direct, Inbound, Marketing}, which disagreed with the table: 3 vs 2 for
+ *   September 2026, because it counted an outbound BNP Paribas deal.)
  *
  * Query params:
  *   ?start=YYYY-MM-DD&end=YYYY-MM-DD  (end exclusive, same convention as /api/hubspot/mqls)
@@ -40,6 +30,8 @@ import { NextRequest, NextResponse } from 'next/server'
  *   ?mode=trend&months=N              server-side loop over N trailing months (for the Row 3
  *                                     trend chart) instead of a single current/previous pair
  */
+
+import { classifyOutcomes, resolveChannel } from '@/lib/marketing-opportunities'
 
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 
@@ -53,9 +45,6 @@ const SQL_EXACT = new Set(['opportunity'])
 // /api/hubspot/pipeline-trend and /api/hubspot/sql-to-opportunity-monthly. Do not conflate with
 // the contact-lifecyclestage OPP_EXACT definition used elsewhere on this dashboard — this route
 // deliberately uses the Deal record instead, per explicit user instruction.
-const STUDIO_PIPELINE_ID = '668588091'
-const MARKETING_DEAL_SOURCES = ['Direct', 'Inbound', 'Marketing']
-const CLOSED_WON_STAGE = '982194449'
 
 type FlowKey = 'mql' | 'sql' | 'opportunity' | 'customer'
 
@@ -85,7 +74,7 @@ async function getCached(key: string, end: string): Promise<any | null> {
   try {
     const db = getCacheDb()
     if (!db) return null
-    const doc = await db.collection('executive_flow_cache_v3').doc(key).get()
+    const doc = await db.collection('executive_flow_cache_v4').doc(key).get()
     if (!doc.exists) return null
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
@@ -101,7 +90,7 @@ async function setCache(key: string, result: any): Promise<void> {
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('executive_flow_cache_v3').doc(key).set({ result, cachedAt: new Date() })
+    await db.collection('executive_flow_cache_v4').doc(key).set({ result, cachedAt: new Date() })
   } catch {}
 }
 
@@ -119,7 +108,7 @@ async function countContactFlow(apiKey: string, startMs: number, endMs: number) 
           { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' },
         ],
       }],
-      properties: ['lifecyclestage'],
+      properties: ['lifecyclestage', 'num_associated_deals', 'lead_source_category', 'hs_analytics_source', 'utm_source', 'utm_medium'],
       limit: 100,
     }
     if (after) body.after = after
@@ -140,60 +129,21 @@ async function countContactFlow(apiKey: string, startMs: number, endMs: number) 
   }
 
   let sqlsCreated = 0
+  const dealCandidates: Array<{ id: string; channel: string }> = []
   for (const c of results) {
     if (SQL_EXACT.has(c.properties?.lifecyclestage || '')) sqlsCreated++
+    if (parseInt(c.properties?.num_associated_deals || '0', 10) > 0) dealCandidates.push({ id: c.id, channel: resolveChannel(c.properties || {}) })
   }
-  return { mqlsCreated: results.length, sqlsCreated }
-}
-
-/**
- * Deal-based Opportunities Created / Customers Won — see file-header note. Mirrors
- * pipeline-trend/route.ts's fetchDeals() exactly (same pipeline/source/lead-form-type filter).
- */
-async function countDealFlow(apiKey: string, createdGteMs: number, createdLtMs: number) {
-  const deals: any[] = []
-  let after: string | undefined
-  while (true) {
-    const body: any = {
-      filterGroups: [{
-        filters: [
-          { propertyName: 'pipeline', operator: 'EQ', value: STUDIO_PIPELINE_ID },
-          { propertyName: 'createdate', operator: 'GTE', value: createdGteMs.toString() },
-          { propertyName: 'createdate', operator: 'LT', value: createdLtMs.toString() },
-          { propertyName: 'deal_source', operator: 'IN', values: MARKETING_DEAL_SOURCES },
-          { propertyName: 'contact_lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' },
-        ],
-      }],
-      properties: ['dealstage'],
-      limit: 100,
-    }
-    if (after) body.after = after
-    const res = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/deals/search`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      if (res.status === 429) { await new Promise(r => setTimeout(r, 1100)); continue }
-      throw new Error(`HubSpot deals search failed: ${res.status}`)
-    }
-    const data = await res.json()
-    deals.push(...(data.results || []))
-    if (!data.paging?.next?.after || data.results?.length === 0) break
-    after = data.paging.next.after
-    await new Promise(r => setTimeout(r, 150))
-  }
-
-  const customersWon = deals.filter(d => d.properties?.dealstage === CLOSED_WON_STAGE).length
-  return { opportunitiesCreated: deals.length, customersWon }
+  return { mqlsCreated: results.length, sqlsCreated, dealCandidates }
 }
 
 async function countAllFlow(apiKey: string, startMs: number, endMs: number) {
-  const [contactFlow, dealFlow] = await Promise.all([
-    countContactFlow(apiKey, startMs, endMs),
-    countDealFlow(apiKey, startMs, endMs),
-  ])
-  return { ...contactFlow, ...dealFlow }
+  const { mqlsCreated, sqlsCreated, dealCandidates } = await countContactFlow(apiKey, startMs, endMs)
+  // Opportunities / Customers Won use the EXACT same definition as the Cohort Funnel Table
+  // (src/lib/marketing-opportunities.ts): contacts created in the period via Book a Demo that have
+  // a marketing-sourced Studio deal; Customers Won = those whose qualifying deal is Closed Won.
+  const outcome = await classifyOutcomes(apiKey, dealCandidates)
+  return { mqlsCreated, sqlsCreated, opportunitiesCreated: outcome.opportunityCount, customersWon: outcome.won }
 }
 
 function pctChange(current: number, previous: number): { pct: number | null; direction: 'up' | 'down' | 'flat' } {
@@ -246,7 +196,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'start and end params required' }, { status: 400 })
     }
 
-    const cacheKey = `${start}_${end}`
+    // Optional explicit previous window (the page uses calendar months, where "shift back by the
+    // same span" would be off by a day for 30- vs 31-day months). Falls back to span-shifting.
+    const prevStartParam = searchParams.get('prevStart')
+    const prevEndParam = searchParams.get('prevEnd')
+    const cacheKey = `${start}_${end}${prevStartParam && prevEndParam ? `_p${prevStartParam}_${prevEndParam}` : ''}`
     if (!noCache) {
       const cached = await getCached(cacheKey, end)
       if (cached) return NextResponse.json(cached)
@@ -255,8 +209,8 @@ export async function GET(req: NextRequest) {
     const startMs = new Date(start + 'T00:00:00.000Z').getTime()
     const endMs = new Date(end + 'T00:00:00.000Z').getTime()
     const spanMs = endMs - startMs
-    const prevStartMs = startMs - spanMs
-    const prevEndMs = startMs
+    const prevStartMs = prevStartParam && prevEndParam ? new Date(prevStartParam + 'T00:00:00.000Z').getTime() : startMs - spanMs
+    const prevEndMs = prevStartParam && prevEndParam ? new Date(prevEndParam + 'T00:00:00.000Z').getTime() : startMs
 
     const [current, previous] = await Promise.all([
       countAllFlow(apiKey, startMs, endMs),

@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v4_all' : 'v4'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v5_all' : 'v5'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
     if (!noCache) {
@@ -154,6 +154,13 @@ export async function GET(req: NextRequest) {
       'num_associated_deals',
       'createdate',
       'lastmodifieddate',
+      // "Why they came in" hover on the Priority Details table: the Book a Demo form's free-text
+      // message, the products ticked on that form, and (LinkedIn lead-gen) the campaign name.
+      'message',
+      'platform_tools',
+      'which_platforms_or_tools_are_you_currently_using_or_evaluating', // LinkedIn lead-form question; empty today (nothing syncs it into HubSpot)
+      'lead_campaign_name',
+      'lead_source',
     ]
 
     const bookDemoContacts = await searchAll(
@@ -387,6 +394,10 @@ export async function GET(req: NextRequest) {
         demoBooked: DEMO_BOOKED_STATUSES.has(props.hs_lead_status || ''),
         demoCompleted: DEMO_COMPLETED_STATUSES.has(props.hs_lead_status || ''),
         demoNoShow: DEMO_NO_SHOW_STATUSES.has(props.hs_lead_status || ''),
+        message: (props.message || '').trim().slice(0, 600),
+        platformTools: (props.platform_tools || props.which_platforms_or_tools_are_you_currently_using_or_evaluating || '').trim(),
+        campaign: (props.lead_campaign_name || '').trim(),
+        leadSource: (props.lead_source || '').trim(),
       }
       if (cat === 'high_priority') contactsByPriority.high.push(contactDetail)
       else if (cat === 'medium_priority') contactsByPriority.medium.push(contactDetail)

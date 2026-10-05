@@ -69,7 +69,7 @@ export function BusinessFlowKPIRow({ data, loading }: { data: ExecutiveFlowRespo
                       {change && Math.abs(change.pct ?? 0).toFixed(0)}%
                     </span>
                   )}
-                  <span className="kpi-prev">vs {(previous ?? 0).toLocaleString()} prior period</span>
+                  <span className="kpi-prev">vs {(previous ?? 0).toLocaleString()} prior month</span>
                 </div>
                 <div className="mt-3">
                   <MetricBadge kind="flow" />

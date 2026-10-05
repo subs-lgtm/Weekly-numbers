@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { addDays, addMonths, differenceInCalendarDays, format, parseISO, startOfMonth, subMonths } from 'date-fns'
 import { SectionShell } from '@/components/SectionShell'
 import { useWeek } from '@/lib/week-context'
 import { BusinessFlowKPIRow, type ExecutiveFlowResponse } from '@/components/executive/BusinessFlowKPIRow'
@@ -14,7 +15,30 @@ import { PredictiveFunnelTable, type ProjectionCohort, type ProjectionBaseline }
 import { PriorityMixTable, type PriorityMonthRow } from '@/components/executive/PriorityMixTable'
 
 export default function ExecutiveDashboardPage() {
-  const { queryStart, queryEnd, range } = useWeek()
+  const { queryEnd, range } = useWeek()
+
+  // Business Flow is MONTHLY (not weekly): the calendar month containing the selected range's
+  // start. A finished month is shown whole vs the previous whole month; the current month is
+  // month-to-date (through yesterday) vs the same day-range of the previous month.
+  const flowMonth = useMemo(() => {
+    const today = new Date()
+    const todayStr = format(today, 'yyyy-MM-dd')
+    let mStart = startOfMonth(parseISO(range.startDate))
+    if (format(mStart, 'yyyy-MM-dd') >= todayStr) mStart = startOfMonth(subMonths(today, 1))
+    const fullEnd = addMonths(mStart, 1)
+    const partial = format(fullEnd, 'yyyy-MM-dd') > todayStr
+    const start = format(mStart, 'yyyy-MM-dd')
+    const end = partial ? todayStr : format(fullEnd, 'yyyy-MM-dd')
+    const prevStartD = subMonths(mStart, 1)
+    const days = differenceInCalendarDays(parseISO(end), mStart)
+    const prevEndD = partial ? addDays(prevStartD, Math.min(days, differenceInCalendarDays(mStart, prevStartD))) : mStart
+    return {
+      start, end, partial,
+      prevStart: format(prevStartD, 'yyyy-MM-dd'),
+      prevEnd: format(prevEndD, 'yyyy-MM-dd'),
+      label: format(mStart, 'MMMM yyyy') + (partial ? ' (month to date)' : ''),
+    }
+  }, [range.startDate])
 
   const [flow, setFlow] = useState<ExecutiveFlowResponse | null>(null)
   const [flowLoading, setFlowLoading] = useState(true)
@@ -37,13 +61,14 @@ export default function ExecutiveDashboardPage() {
   useEffect(() => {
     let cancelled = false
     setFlowLoading(true)
-    fetch(`/api/hubspot/executive-flow?start=${queryStart}&end=${queryEnd}`)
+    // A month-to-date window ends "today", which the route's cache would treat as a closed period.
+    fetch(`/api/hubspot/executive-flow?start=${flowMonth.start}&end=${flowMonth.end}&prevStart=${flowMonth.prevStart}&prevEnd=${flowMonth.prevEnd}${flowMonth.partial ? '&nocache=1' : ''}`)
       .then(r => r.json())
       .then(d => { if (!cancelled) setFlow(d) })
       .catch(() => { if (!cancelled) setFlow(null) })
       .finally(() => { if (!cancelled) setFlowLoading(false) })
     return () => { cancelled = true }
-  }, [queryStart, queryEnd])
+  }, [flowMonth])
 
   useEffect(() => {
     let cancelled = false
@@ -131,7 +156,7 @@ export default function ExecutiveDashboardPage() {
         <section className="space-y-3">
           <div>
             <h2 className="text-[15px] font-[700] text-[#2A1F1A]">Business Flow Performance</h2>
-            <p className="card-note">What did we generate, and what business outcomes occurred, during {range.label}? Static once the period closes.</p>
+            <p className="card-note">What did we generate, and what business outcomes occurred, during {flowMonth.label}? Monthly view, compared with the previous month. Static once the month closes.</p>
           </div>
           <BusinessFlowKPIRow data={flow} loading={flowLoading} />
         </section>

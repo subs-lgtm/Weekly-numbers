@@ -22,6 +22,10 @@ export type LeadContact = {
   demoBooked: boolean
   demoCompleted: boolean
   demoNoShow: boolean
+  message?: string
+  platformTools?: string
+  campaign?: string
+  leadSource?: string
 }
 
 type Props = {

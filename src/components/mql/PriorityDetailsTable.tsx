@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ArrowUpRight } from 'lucide-react'
 
 type LeadContact = {
@@ -8,6 +9,58 @@ type LeadContact = {
   score: number; formType: string; source: string; status: string; lifecycleStage: string
   owner: string; createdate: string | null; lastmodifieddate: string | null
   demoBooked: boolean; demoCompleted: boolean; demoNoShow: boolean
+  message?: string; platformTools?: string; campaign?: string; leadSource?: string
+}
+
+// Hover card on the lead name: why the person came in. Book a Demo form -> the message they typed
+// and the products they ticked; LinkedIn lead-gen -> campaign, title and company (HubSpot stores no
+// message for those). Portal + fixed positioning so the table's scroll container can't clip it.
+function WhyCameIn({ c }: { c: LeadContact }) {
+  const [tip, setTip] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
+  const show = (e: React.MouseEvent<HTMLElement>) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const W = 340
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - W - 8))
+    setTip(window.innerHeight - r.bottom >= 260 ? { left, top: r.bottom + 6 } : { left, bottom: window.innerHeight - r.top + 6 })
+  }
+  const isLinkedIn = c.leadSource === 'LinkedIn'
+  // LinkedIn lead-gen leads arrive with both form answers packed into `message` as
+  // "<question>: <answer>" lines — split them into labelled rows instead of showing the raw text.
+  const li = (c.message || '').match(/^What problem are you trying to solve with AI agents\?:\s*([\s\S]*?)\s*\n\s*Which platforms or tools are you currently using or evaluating\?:\s*([\s\S]*)$/)
+  return (
+    <>
+      <span className="cursor-help" onMouseEnter={show} onMouseLeave={() => setTip(null)}>{c.name}</span>
+      {tip && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{ position: 'fixed', left: tip.left, top: tip.top, bottom: tip.bottom, width: 340, zIndex: 9999 }}
+          className="pointer-events-none bg-[#2A1F1A] text-white text-[12px] p-3.5 rounded-lg shadow-xl border border-[#5C4E46] leading-relaxed text-left font-[400]"
+        >
+          <div className="text-[13px] font-[600] mb-0.5">{c.name}</div>
+          <div className="text-[11px] text-[#B9AFA6] mb-2">
+            {[c.jobTitle !== '—' ? c.jobTitle : '', c.company !== '—' ? c.company : ''].filter(Boolean).join(' · ') || c.email}
+          </div>
+          <div className="text-[10px] uppercase tracking-wider text-[#B9AFA6] mb-0.5">{isLinkedIn ? 'Problem they want to solve (LinkedIn lead form)' : 'Why they came in'}</div>
+          {li ? (
+            <>
+              <div className="whitespace-pre-line">{li[1] || '—'}</div>
+              <div className="mt-2"><span className="text-[10px] uppercase tracking-wider text-[#B9AFA6]">Platforms / tools they use or evaluate</span><div>{li[2] || '—'}</div></div>
+            </>
+          ) : c.message ? (
+            <div className="whitespace-pre-line">{c.message}</div>
+          ) : (
+            <div className="text-[#B9AFA6] italic">{isLinkedIn ? 'No form answers in HubSpot for this lead yet.' : 'No message left on the form.'}</div>
+          )}
+          {c.platformTools && (
+            <div className="mt-2"><span className="text-[10px] uppercase tracking-wider text-[#B9AFA6]">Interested in</span><div>{c.platformTools}</div></div>
+          )}
+          {c.campaign && (
+            <div className="mt-2"><span className="text-[10px] uppercase tracking-wider text-[#B9AFA6]">Campaign</span><div>{c.campaign}</div></div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
 }
 
 function fmtDuration(ms: number): string {
@@ -95,7 +148,7 @@ export function PriorityDetailsTable({ contactsByPriority, dateRangeLabel }: Pro
                 : '—'
               return (
                 <tr key={c.id}>
-                  <td className="tname">{c.name}</td>
+                  <td className="tname"><WhyCameIn c={c} /></td>
                   <td>{c.company}</td>
                   <td>{c.owner === '—' ? '—' : c.owner.split('@')[0]}</td>
                   <td className="tname">{c.score || '—'}</td>

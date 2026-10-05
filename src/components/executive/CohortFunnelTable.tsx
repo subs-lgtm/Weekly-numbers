@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MetricBadge } from './MetricBadge'
 import { MethodologyTooltip } from './MethodologyTooltip'
 
@@ -16,6 +18,8 @@ export type Cohort = {
   sqlCount: number
   opportunityCount: number
   customersWon: number
+  opportunityBySource?: Record<string, number>
+  opportunityByChannel?: Record<string, number>
   mqlToSql: { pct: number | null }
   sqlToOpportunity: { pct: number | null }
   opportunityToCustomer: { pct: number | null }
@@ -29,6 +33,68 @@ const MATURITY_STYLE: Record<string, { bg: string; color: string }> = {
   'Developing':         { bg: '#F3E6CC', color: '#B9822E' },
   'Partially Mature':   { bg: '#DEE5F0', color: '#3D5A8C' },
   'Mature':             { bg: '#DFF0E6', color: '#3E7A55' },
+}
+
+function DistBlock({ title, dist }: { title: string; dist?: Record<string, number> }) {
+  const entries = Object.entries(dist || {}).sort((a, b) => b[1] - a[1])
+  if (entries.length === 0) return null
+  return (
+    <span className="block mb-1.5">
+      <span className="block text-[10px] uppercase tracking-wider text-[#B9AFA6] mb-0.5">{title}</span>
+      {entries.map(([k, v]) => (
+        <span key={k} className="flex justify-between gap-3"><span>{k}</span><span className="font-[600]">{v}</span></span>
+      ))}
+    </span>
+  )
+}
+
+// Rendered through a portal with fixed positioning: the table sits inside an overflow-x-auto
+// wrapper, which clips any absolutely-positioned tooltip that pokes out above/below it (that is
+// what cut off the first rows' tooltips). Flips above the cell when there isn't room below.
+function OppCell({ label, count, bySource, byChannel, note, deals }: {
+  label: string; count: number; bySource?: Record<string, number>; byChannel?: Record<string, number>; note: string
+  deals?: Array<{ name: string; source: string; channel: string }>
+}) {
+  const [tip, setTip] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
+  const show = (e: React.MouseEvent<HTMLSpanElement>) => {
+    if (count <= 0) return
+    const r = e.currentTarget.getBoundingClientRect()
+    const W = 280
+    const left = Math.max(8, Math.min(r.right - W, window.innerWidth - W - 8))
+    const roomBelow = window.innerHeight - r.bottom
+    setTip(roomBelow >= 300 ? { left, top: r.bottom + 8 } : { left, bottom: window.innerHeight - r.top + 8 })
+  }
+  return (
+    <>
+      <span
+        className={count > 0 ? 'cursor-help border-b border-dashed border-[#7A6A60]/40' : ''}
+        onMouseEnter={show}
+        onMouseLeave={() => setTip(null)}
+      >
+        {count.toLocaleString()}
+      </span>
+      {tip && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{ position: 'fixed', left: tip.left, top: tip.top, bottom: tip.bottom, width: 280, zIndex: 9999 }}
+          className="pointer-events-none bg-[#2A1F1A] text-white text-[12px] p-3.5 rounded-lg shadow-xl border border-[#5C4E46] leading-relaxed text-left font-[400]"
+        >
+          <div className="text-[13px] font-[600] mb-2">{label} — {count} {count === 1 ? 'opportunity' : 'opportunities'}</div>
+          <DistBlock title="By deal source" dist={bySource} />
+          <DistBlock title="By contact channel" dist={byChannel} />
+          {deals && deals.length > 0 && (
+            <span className="block mb-1.5">
+              <span className="block text-[10px] uppercase tracking-wider text-[#B9AFA6] mb-0.5">Deals</span>
+              {deals.map((d, i) => (
+                <span key={i} className="block text-[11px] leading-snug mb-0.5">{d.name} <span className="text-[#B9AFA6]">· {d.source} · {d.channel}</span></span>
+              ))}
+            </span>
+          )}
+          <div className="mt-2 text-[10px] text-[#B9AFA6]">{note}</div>
+        </div>,
+        document.body,
+      )}
+    </>
+  )
 }
 
 const IMMATURE = new Set(['Too Early to Judge', 'Developing'])
@@ -82,7 +148,7 @@ export function CohortFunnelTable({ cohorts, loading }: { cohorts: Cohort[]; loa
                   <td className="py-2.5 pr-3 font-[600] text-[#2A1F1A]">{c.label}</td>
                   <td className="py-2.5 pr-3 text-right">{c.mqlCount.toLocaleString()}</td>
                   <td className="py-2.5 pr-3 text-right">{c.sqlCount.toLocaleString()}</td>
-                  <td className="py-2.5 pr-3 text-right">{c.opportunityCount.toLocaleString()}</td>
+                  <td className="py-2.5 pr-3 text-right"><OppCell label={c.label} count={c.opportunityCount} bySource={c.opportunityBySource} byChannel={c.opportunityByChannel} note="Contacts created this month (Book a Demo) that have a marketing-sourced Studio deal. Outbound, Referral, Repeat Customer and blank source excluded." /></td>
                   <td className="py-2.5 pr-3 text-right">{c.customersWon.toLocaleString()}</td>
                   <td className="py-2.5 pr-3 text-right">{pctCell(c.mqlToSql.pct, dim)}</td>
                   <td className="py-2.5 pr-3 text-right">{pctCell(c.sqlToOpportunity.pct, dim)}</td>
