@@ -468,3 +468,7 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     urls/scorecard ids untouched. Events page now embeds `https://eventsreporting.lovable.app/` (was events-performance-dashboard.vercel.app).
     NOTE for deploys: `vercel --prod` uploads the local folder, not git — a colleague's change that was never pushed to GitHub
     gets overwritten by the next deploy from this folder. Always `git fetch` first and ask teammates to push to `main`.
+34. **2026-10-05 — Events leads are MANUAL for now.** `weekly_metrics/{week}/sections/events/entries/total_leads` (Events page
+    "Total Number of Leads" table, `InlineMetricTable`) holds the count; seeded 67 for week 2026-09-28 from a lead export
+    (~/Downloads/table.tsv). The Leads page "Events (Booth Event)" card shows that manual number for the selected week (weekly
+    growth vs previous week's manual number; monthly growth still HubSpot). Replace with a HubSpot sync later.

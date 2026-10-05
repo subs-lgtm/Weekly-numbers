@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { SectionShell } from '@/components/SectionShell'
 import { SECTION_MAP } from '@/lib/metrics-config'
 import { useWeek } from '@/lib/week-context'
+import { useWeeklyMetrics, usePrevWeekMetrics } from '@/hooks/useWeeklyMetrics'
 import { LeadFunnelCard } from '@/components/leads/LeadFunnelCard'
 import { LeadCategoriesPerformance } from '@/components/leads/LeadCategoriesPerformance'
 import { LeadsComparisonCards } from '@/components/leads/LeadsComparisonCards'
@@ -14,6 +15,14 @@ import { format, subWeeks, subMonths, startOfMonth, endOfMonth, addDays } from '
 
 function LeadsPageInner() {
   const { weekStart, queryStart, queryEnd } = useWeek()
+
+  // Events leads are entered by hand for now (Events page -> Total Number of Leads) until a HubSpot sync
+  // exists; when a number has been entered for the selected week it replaces the HubSpot "Booth Event"
+  // count on the Events card. Weekly growth compares against the previous week's manual number.
+  const { data: eventsMetrics } = useWeeklyMetrics('events', weekStart)
+  const prevEventsMetrics = usePrevWeekMetrics('events', weekStart)
+  const manualEvents = parseInt(eventsMetrics['total_leads']?.value ?? '', 10)
+  const manualPrevEvents = parseInt(prevEventsMetrics['total_leads']?.value ?? '', 10)
 
   // MoM: compare the month the selected week falls in vs the previous month
   const selectedDate = useMemo(() => new Date(weekStart + 'T00:00:00'), [weekStart])
@@ -133,18 +142,19 @@ function LeadsPageInner() {
   // Webinar: the card counts only qualified webinar leads (not in-person Luma events, lead score >= 50);
   // `webinar_qualified` comes from the API. by_form_type['Webinar'] itself stays the raw count because the
   // Total Leads maths elsewhere subtracts it.
-  const withPartnerFormContains = (byFormType: Record<string, number> | undefined, byFormTypeContains: Record<string, number> | undefined, webinarQualified?: number) => ({
+  const withPartnerFormContains = (byFormType: Record<string, number> | undefined, byFormTypeContains: Record<string, number> | undefined, webinarQualified?: number, boothEvents?: number) => ({
     ...(byFormType || {}),
     'Partner Form': byFormTypeContains?.['Partner Form'] ?? byFormType?.['Partner Form'] ?? 0,
     ...(webinarQualified !== undefined ? { Webinar: webinarQualified } : {}),
+    ...(boothEvents !== undefined && !Number.isNaN(boothEvents) ? { 'Booth Event': boothEvents } : {}),
   })
 
   return (
     <div className="space-y-6">
       {/* 1. Lead Categories Performance */}
       <LeadCategoriesPerformance
-        currWeek={{ contacts: currWeekContacts, byFormType: withPartnerFormContains(data.currWeek.by_form_type, data.currWeek.by_form_type_contains, data.currWeek.webinar_qualified) }}
-        prevWeek={{ contacts: prevWeekContacts, byFormType: withPartnerFormContains(data.prevWeek.by_form_type, data.prevWeek.by_form_type_contains, data.prevWeek.webinar_qualified) }}
+        currWeek={{ contacts: currWeekContacts, byFormType: withPartnerFormContains(data.currWeek.by_form_type, data.currWeek.by_form_type_contains, data.currWeek.webinar_qualified, manualEvents) }}
+        prevWeek={{ contacts: prevWeekContacts, byFormType: withPartnerFormContains(data.prevWeek.by_form_type, data.prevWeek.by_form_type_contains, data.prevWeek.webinar_qualified, manualPrevEvents) }}
         currMonth={{ contacts: currMonthContacts, byFormType: withPartnerFormContains(data.currMonth.by_form_type, data.currMonth.by_form_type_contains, data.currMonth.webinar_qualified) }}
         prevMonth={{ contacts: prevMonthContacts, byFormType: withPartnerFormContains(data.prevMonth.by_form_type, data.prevMonth.by_form_type_contains, data.prevMonth.webinar_qualified) }}
       />
