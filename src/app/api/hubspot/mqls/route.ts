@@ -99,6 +99,52 @@ export const maxDuration = 300
 const IN_PERSON_LUMA_EVENT = /(agent labs\b|ai made me do it|private sail|sail with siva|off the grid|financial services leadership dinner|leadership dinner|ai leaders'? table|off the record)/i
 const WEBINAR_MIN_SCORE = 50
 
+// --- Priority memory -------------------------------------------------------------------------
+// HubSpot's live lyzr_lead_score / lyzr_lead_score_category get overwritten by the (lower-scoring) v2 model
+// for leads that already had a v1 score (a High at 94 became 60 Medium in HubSpot on 2026-10-05, and whole
+// weeks of High leads were rewritten on Sep 21-24). By request (2026-10-05) the dashboard remembers the
+// HIGHEST priority it has ever seen for each Book a Demo lead and keeps counting it at that level, so past
+// weeks stop shifting. Monotonic: a lead can only move up. Only leads the dashboard has seen are protected;
+// the original v1 scores of leads overwritten before this shipped can't be recovered (seed manually).
+const PRIORITY_RANK: Record<string, number> = { high_priority: 3, medium_priority: 2, low_priority: 1 }
+const rankOf = (c: string) => PRIORITY_RANK[c] || 0
+
+async function applyPriorityMemory(contacts: any[]): Promise<number> {
+  try {
+    const db = getCacheDb()
+    if (!db) return 0
+    const targets = contacts.filter(c => (c.properties?.lead_form_type || '').includes('Book a Demo'))
+    let upgraded = 0
+    for (let i = 0; i < targets.length; i += 200) {
+      const chunk = targets.slice(i, i + 200)
+      const refs = chunk.map(c => db.collection('mql_priority_memory').doc(String(c.id)))
+      const snaps = await db.getAll(...refs)
+      const batch = db.batch()
+      let writes = 0
+      chunk.forEach((c: any, idx: number) => {
+        const props = c.properties || (c.properties = {})
+        const curCat: string = props.lyzr_lead_score_category || ''
+        const curScore = parseFloat(props.lyzr_lead_score || '0') || 0
+        const mem = snaps[idx].exists ? snaps[idx].data() : null
+        if (mem && rankOf(mem.category) > rankOf(curCat)) {
+          // HubSpot now says lower than what we saw before: keep the remembered level and score.
+          props.lyzr_lead_score_category = mem.category
+          props.lyzr_lead_score = String(mem.score)
+          upgraded++
+        } else if (!mem || rankOf(curCat) > rankOf(mem.category) || (rankOf(curCat) === rankOf(mem.category) && curScore > (mem.score || 0))) {
+          batch.set(refs[idx], { category: curCat, score: curScore, updatedAt: new Date(), ...(mem ? {} : { firstSeen: new Date() }) }, { merge: true })
+          writes++
+        }
+      })
+      if (writes) await batch.commit()
+    }
+    return upgraded
+  } catch (e) {
+    console.warn('[mqls] priority memory skipped:', (e as Error).message)
+    return 0
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const start = searchParams.get('start')
@@ -121,7 +167,7 @@ export async function GET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v6_all' : 'v6'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v7_all' : 'v7'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
     if (!noCache) {
@@ -371,6 +417,8 @@ export async function GET(req: NextRequest) {
     let statusDemoBookedPlus = 0
     let statusDemoCompletedPlus = 0
     let statusAssociatedWithDeal = 0
+
+    await applyPriorityMemory(contacts)
 
     for (const c of contacts) {
       const props = c.properties || {}

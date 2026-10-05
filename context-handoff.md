@@ -472,3 +472,10 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     "Total Number of Leads" table, `InlineMetricTable`) holds the count; seeded 67 for week 2026-09-28 from a lead export
     (~/Downloads/table.tsv). The Leads page "Events (Booth Event)" card shows that manual number for the selected week (weekly
     growth vs previous week's manual number; monthly growth still HubSpot). Replace with a HubSpot sync later.
+35. **2026-10-05 — Priority memory.** HubSpot overwrites `lyzr_lead_score`/`lyzr_lead_score_category` with the lower v2 score
+    for leads that already had a v1 score (Jayant Raman 94 High -> 60 Medium at 10:54 UTC; whole weeks Aug 24-Sep 7 lost their
+    Highs). By request, `/api/hubspot/mqls` now remembers each Book a Demo lead's HIGHEST priority + score in Firestore
+    `mql_priority_memory/{contactId}` (monotonic - never lowered) and applies it BEFORE the counting loop (`applyPriorityMemory`),
+    so High/Medium/Low counts, Priority Details and the trend cards stop shifting. Protects only leads seen from now on; the
+    already-overwritten v1 scores (Aug 24 - Sep 7 etc.) are unrecoverable. Jayant Raman was seeded manually (94). Cache: mqls `v7`.
+    Don't "simplify" this back to reading HubSpot's category directly without asking.
