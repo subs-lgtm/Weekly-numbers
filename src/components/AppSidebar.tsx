@@ -40,6 +40,7 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/ui-ux": Palette,
   "/pr-news": Newspaper,
   "/architect": Building2,
+  "/socials": Share2,
   "/social-influencers": Share2,
   "/reddit": MessageSquare,
   "/email": Mail,

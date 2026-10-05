@@ -53,8 +53,12 @@ export const navGroups: { label: string; items: NavItemData[] }[] = [
   {
     label: "Social & Influencers",
     items: [
-      { title: "Social & Influencers", url: "/social-influencers" },
-      { title: "Reddit", url: "/reddit" },
+      // "Socials" (embedded LinkedIn + X + Reddit dashboard) added 2026-10-05 on top; the two original
+      // pages are kept but renamed "- legacy" per explicit request. Only the nav TITLES changed — the
+      // urls (and therefore Channel Scorecard ids / Firestore history) are untouched.
+      { title: "Socials", url: "/socials" },
+      { title: "Social - legacy", url: "/social-influencers" },
+      { title: "Reddit - legacy", url: "/reddit" },
     ],
   },
   {

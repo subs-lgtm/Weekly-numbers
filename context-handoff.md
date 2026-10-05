@@ -462,3 +462,9 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     ("Luma Registration: <title>"): Agent Labs, AI Made Me Do It, Off the Grid/private sail, Sail with Siva, leadership dinner,
     AI Leaders' Table/Off the Record. Edit that regex when new in-person events appear. API returns `webinar_qualified`
     and a per-contact `webinarExcluded`; `by_form_type.Webinar` stays RAW on purpose (Total Leads subtracts it). Cache: mqls `v6`.
+33. **2026-10-05 (night) — Socials tab + Events embed.** New sidebar item "Socials" (`/socials`, iframe of
+    `https://data-cheer-up.lovable.app/`, LinkedIn + X + Reddit) placed first in the Social & Influencers group; the two old
+    pages are now titled "Social - legacy" (`/social-influencers`) and "Reddit - legacy" (`/reddit`) — only nav titles changed,
+    urls/scorecard ids untouched. Events page now embeds `https://eventsreporting.lovable.app/` (was events-performance-dashboard.vercel.app).
+    NOTE for deploys: `vercel --prod` uploads the local folder, not git — a colleague's change that was never pushed to GitHub
+    gets overwritten by the next deploy from this folder. Always `git fetch` first and ask teammates to push to `main`.
