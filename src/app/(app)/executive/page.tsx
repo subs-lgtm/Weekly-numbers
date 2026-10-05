@@ -112,12 +112,14 @@ export default function ExecutiveDashboardPage() {
     let cancelled = false
     setPriorityLoading(true)
 
-    // Trailing 3 calendar months (same convention as the Predictive Funnel below), each using
+    // Last 3 COMPLETED calendar months - the running month is deliberately left out (it is a partial
+    // month and read as a sudden collapse in High/Medium share; fixed per explicit request 2026-10-05).
+    // Each month uses
     // the same MQL cohort definition as the rest of this dashboard: createdate in month +
     // Book a Demo. Reuses the existing /api/hubspot/mqls route, which already computes
     // high_priority/medium_priority/low_priority for any date range — no new backend needed.
     const now = new Date()
-    const months = [2, 1, 0].map(i => {
+    const months = [3, 2, 1].map(i => {
       const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))
       const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i + 1, 1))
       return {
