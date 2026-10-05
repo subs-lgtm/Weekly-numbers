@@ -148,7 +148,7 @@ export function CohortFunnelTable({ cohorts, loading }: { cohorts: Cohort[]; loa
                   <td className="py-2.5 pr-3 font-[600] text-[#2A1F1A]">{c.label}</td>
                   <td className="py-2.5 pr-3 text-right">{c.mqlCount.toLocaleString()}</td>
                   <td className="py-2.5 pr-3 text-right">{c.sqlCount.toLocaleString()}</td>
-                  <td className="py-2.5 pr-3 text-right"><OppCell label={c.label} count={c.opportunityCount} bySource={c.opportunityBySource} byChannel={c.opportunityByChannel} note="Contacts created this month (Book a Demo) that have a marketing-sourced Studio deal. Outbound, Referral, Repeat Customer and blank source excluded." /></td>
+                  <td className="py-2.5 pr-3 text-right"><OppCell label={c.label} count={c.opportunityCount} bySource={c.opportunityBySource} byChannel={c.opportunityByChannel} note="Book a Demo form submitters created this month that have a Studio deal. Referral, Repeat Customer and blank deal source are excluded." /></td>
                   <td className="py-2.5 pr-3 text-right">{c.customersWon.toLocaleString()}</td>
                   <td className="py-2.5 pr-3 text-right">{pctCell(c.mqlToSql.pct, dim)}</td>
                   <td className="py-2.5 pr-3 text-right">{pctCell(c.sqlToOpportunity.pct, dim)}</td>

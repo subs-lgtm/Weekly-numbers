@@ -96,7 +96,7 @@ async function getCache(period: string, periodClosed: boolean): Promise<any | nu
   try {
     const db = getCacheDb()
     if (!db) return null
-    const doc = await db.collection('executive_cohort_cache_v9').doc(period).get()
+    const doc = await db.collection('executive_cohort_cache_v10').doc(period).get()
     if (!doc.exists) return null
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
@@ -108,7 +108,7 @@ async function setCache(period: string, result: any): Promise<void> {
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('executive_cohort_cache_v9').doc(period).set({ result, cachedAt: new Date() })
+    await db.collection('executive_cohort_cache_v10').doc(period).set({ result, cachedAt: new Date() })
   } catch {}
 }
 

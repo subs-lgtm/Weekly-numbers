@@ -11,9 +11,12 @@ export const STUDIO_DEALS_PIPELINE_ID = '668588091'
 // contacts are already Book-a-Demo by construction, which covers that filter's contact half.
 // Widened 2026-10-04 per explicit request: Partner Lead, SI Partner, HyperScalar and Event deals
 // also count as marketing-driven. Still excluded: Referral, Repeat Customer, and blank deal_source.
-// 'Direct' (labelled "Direct / Outbound" in HubSpot) removed 2026-10-04 per explicit request —
-// outbound is sales-sourced, not marketing-driven.
-export const MARKETING_DEAL_SOURCES = new Set(['Inbound', 'Marketing', 'Partner Lead', 'SI Partner', 'HyperScalar', 'Event'])
+// 'Direct' (labelled "Direct / Outbound" in HubSpot) is back IN as of 2026-10-05 per explicit request:
+// every contact this is applied to is a Book a Demo form submitter, i.e. it already has a marketing
+// touchpoint, so a sales-set "Direct" source on its deal does not make it non-marketing (e.g. First
+// Hospitality and BNP Paribas, both August Book a Demo leads on Direct traffic). Still excluded:
+// Referral, Repeat Customer and blank deal_source.
+export const MARKETING_DEAL_SOURCES = new Set(['Direct', 'Inbound', 'Marketing', 'Partner Lead', 'SI Partner', 'HyperScalar', 'Event'])
 export const DEAL_SOURCE_LABELS: Record<string, string> = { Direct: 'Direct / Outbound', HyperScalar: 'HyperScalers' }
 
 /**

@@ -402,6 +402,15 @@ Chronological, approximate dates from commit context / explicit dates mentioned 
     Podcasts, Rb2B cards exist at 0 until HubSpot gets a matching `lead_form_type` value. Webinar and Studio Users
     are excluded from the "Total Top-of-Funnel Leads" tile (same rule as Total Leads: Webinar/Agent Studio out).
 
+31. **2026-10-05 (later)** — `Direct` ("Direct / Outbound") deal source is counted again for the Book a Demo cohort
+    (every contact there already has a marketing touchpoint; Aug now = First Hospitality + BNP Paribas = 2). Still
+    excluded: Referral, Repeat Customer, blank. New **Use Cases** section under Priority Details on `/mqls`
+    (`src/components/mql/MQLUseCases.tsx`): keyword-themed summary of what MQLs say they came for + table. GSI/SI &
+    Founder Amplification page now embeds `https://lyzr-dashboard.vercel.app/` (was lyzrads-dashboard-eight).
+    **Known data quirk**: for Book-a-Demo leads created Aug 24 - Sep 7 the live `lyzr_lead_score` was overwritten with the
+    v2 shadow score (identical for 100% of contacts, modified Sep 21-24), so HubSpot shows 0 High for those weeks.
+    User decided to leave the history as-is; v2 is treated as the live score going forward. Don't "fix" it in the dashboard.
+
 ## What's currently in progress (uncommitted, NOT deployed, NOT pushed) — accurate as of 2026-09-28
 
 **G2 Ad Click Analytics** — the user asked (screenshots of a G2 ad-platform dashboard + a real

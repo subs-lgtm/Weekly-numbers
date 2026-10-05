@@ -19,6 +19,7 @@ import { ChannelBreakdownGrid } from '@/components/mql/ChannelBreakdownGrid'
 import { MQLJourneyFunnel } from '@/components/mql/MQLJourneyFunnel'
 import { PriorityAnalysis } from '@/components/mql/PriorityAnalysis'
 import { PriorityDetailsTable } from '@/components/mql/PriorityDetailsTable'
+import { MQLUseCases } from '@/components/mql/MQLUseCases'
 import { MQLAgingBuckets } from '@/components/mql/MQLAgingBuckets'
 import { PipelineTrendChart } from '@/components/mql/PipelineTrendChart'
 
@@ -439,6 +440,13 @@ function MQLPageInner() {
           <div className="section-label">Priority Details</div>
           {hubspotData?.contacts_by_priority && (
             <PriorityDetailsTable contactsByPriority={hubspotData.contacts_by_priority} dateRangeLabel={`${effectiveStart} → ${effectiveEnd}`} />
+          )}
+
+          {/* 10b. USE CASES — what the MQLs said they came for */}
+          <div className="section-label">Use Cases</div>
+          <div className="section-sub">What problem each MQL said they are trying to solve, grouped into themes</div>
+          {hubspotData?.contacts_by_priority && (
+            <MQLUseCases contacts={allContacts} dateRangeLabel={`${effectiveStart} → ${effectiveEnd}`} />
           )}
 
           {/* 11. MQL AGING */}

@@ -17,8 +17,8 @@ import { NextRequest, NextResponse } from 'next/server'
  *   UPDATED 2026-10-04 per explicit request to match the Cohort Funnel Table exactly: same
  *   contact cohort as MQLs (created in the period via Book a Demo), and a contact counts as an
  *   Opportunity only if it has a marketing-sourced Studio Deals deal (Inbound, Marketing,
- *   Partner Lead, SI Partner, HyperScalar, Event; Direct/Outbound, Referral, Repeat Customer and
- *   blank source excluded). Customers Won = those whose qualifying deal is Closed Won. All of
+ *   Partner Lead, SI Partner, HyperScalar, Event, and Direct — Direct re-added 2026-10-05 since the
+ *   cohort is Book a Demo form submitters; Referral, Repeat Customer and blank source excluded). Customers Won = those whose qualifying deal is Closed Won. All of
  *   that logic lives in src/lib/marketing-opportunities.ts, shared with executive-cohorts, so
  *   the two can't drift. (The earlier version bucketed deals by deal createdate with
  *   deal_source IN {Direct, Inbound, Marketing}, which disagreed with the table: 3 vs 2 for
@@ -74,7 +74,7 @@ async function getCached(key: string, end: string): Promise<any | null> {
   try {
     const db = getCacheDb()
     if (!db) return null
-    const doc = await db.collection('executive_flow_cache_v4').doc(key).get()
+    const doc = await db.collection('executive_flow_cache_v5').doc(key).get()
     if (!doc.exists) return null
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
@@ -90,7 +90,7 @@ async function setCache(key: string, result: any): Promise<void> {
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('executive_flow_cache_v4').doc(key).set({ result, cachedAt: new Date() })
+    await db.collection('executive_flow_cache_v5').doc(key).set({ result, cachedAt: new Date() })
   } catch {}
 }
 
