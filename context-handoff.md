@@ -411,62 +411,36 @@ Chronological, approximate dates from commit context / explicit dates mentioned 
     v2 shadow score (identical for 100% of contacts, modified Sep 21-24), so HubSpot shows 0 High for those weeks.
     User decided to leave the history as-is; v2 is treated as the live score going forward. Don't "fix" it in the dashboard.
 
-## What's currently in progress (uncommitted, NOT deployed, NOT pushed) — accurate as of 2026-09-28
+32. **2026-10-05 — `535461d`** — G2 page shipped (user said "ship the pending G2 work"; deployed to production
+    via `vercel --prod`, then committed and pushed). Contents: the Impressions/Clicks/Conversions/Spend
+    `InlineMetricTable`, the "Clicks by Topic / Competitor" breakdown, and a new read-only **Buyer Intent** card
+    (`src/components/g2/G2BuyerIntent.tsx`, `src/hooks/useG2BuyerIntent.ts`, Firestore `g2_buyer_intent/{weekStart}`).
+    Data source is the lead-scoring MCP (`get_g2_buyer_intent`): a stored snapshot of a Google Sheet that Mothilal
+    fills in by hand every Monday from my.g2.com. G2 has no API for Buyer Intent or Advertising, so nothing is live.
+    Only the 2026-09-28 snapshot existed when this shipped. It was seeded into weeks `2026-09-21` and `2026-09-28`
+    (`scripts/seed-g2-buyer-intent.mjs`; `scripts/` is git-ignored). Clicks=389 (real, 589 incl. 200 duplicates) and
+    Spend=$2,690.28 cover Sep 17-28 and are written to BOTH weeks, so WoW shows 0%. Impressions/Conversions have no
+    source and are blank. Gotcha hit: the page opens on the current week, so data seeded only into the previous
+    week showed as empty.
 
-**G2 Ad Click Analytics** — the user asked (screenshots of a G2 ad-platform dashboard + a real
-CSV export) to consolidate G2 impressions/clicks/conversions/spend and a "Clicks by Topic" /
-"Clicks by Competitor" breakdown into the existing `/g2` page. Manual entry for now; the user
-said they'll provide G2 API keys later to automate it. **Built but never explicitly confirmed
-for deploy** — has been `git stash`ed and restored at least twice already to keep it out of
-unrelated confirmed deploys (see history item 25). Do not ship this without asking first.
+## What's currently in progress — accurate as of 2026-10-05
 
-Files (all currently modified/untracked in the working tree — see `git status --porcelain`
-below):
-- `src/lib/metrics-config.ts` — added a `metrics` array to the `'g2'` section (Impressions/
-  Clicks/Conversions/Spend, via the existing `InlineMetricTable`/`useWeeklyMetrics` pattern).
-- `src/hooks/useG2ClickBreakdown.ts` (new, untracked) — `useG2ClickList(weekStart, listKey)`,
-  Firestore path `g2_click_breakdown/{weekStart}/lists/{listKey}`.
-- `src/components/g2/G2ClickBreakdown.tsx` (new, untracked) — two-panel "Clicks by Topic"/
-  "Clicks by Competitor" UI, inline-editable rows, bar viz.
-- `src/app/(app)/g2/page.tsx` — wired in `InlineMetricTable` + `G2ClickBreakdown` above the
-  existing iframe.
-- `scripts/seed-g2-click-breakdown.mjs` — one-time seed script, already run successfully against
-  Firestore directly (real topic/competitor numbers for week `2026-09-21`, sourced from the
-  user's CSV + screenshot) — this data is already live in Firestore regardless of whether the
-  *code* to display it ships; re-running it would just overwrite with the same values.
+Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
+- After the next Monday G2 sheet refresh, overwrite the `2026-09-28` Clicks/Spend (currently a copy of the Sep 17-28
+  snapshot) and seed the new week's Buyer Intent / topics / competitors.
+- Impressions and Conversions need a manual entry from the G2 portal (no data source).
 
-Before shipping this (when confirmed): typecheck, then a local preview (`PREVIEW_BYPASS = true`
-temporarily) to visually confirm the new section renders correctly on `/g2`, then the normal
-deploy workflow in `CLAUDE.md`.
+## Current machine state (accurate as of 2026-10-05 — re-check before trusting)
 
-## Current machine state (accurate as of 2026-09-28 — re-check before trusting)
-
-- No local `next dev` server running. `PREVIEW_BYPASS = false` in `src/app/(app)/layout.tsx`
-  (correct/safe default — confirmed, not mid-preview).
-- `git status --porcelain`:
-  ```
-   M src/app/(app)/g2/page.tsx
-   M src/lib/metrics-config.ts
-  ?? src/components/g2/
-  ?? src/hooks/useG2ClickBreakdown.ts
-  ```
-  (this is exactly the unconfirmed G2 work described above — nothing else pending)
-- Last pushed commit on `main`: `30ea8a9` (history item 26). Verified live on production
-  (`weekly-marketing-numbers.vercel.app`) via direct API curl the same session it was deployed.
-- Separate note (still true): `/Users/mothilal-kanagaraj/Desktop/events-performance-dashboard`
-  is a **different git repo / different Vercel project**, already fully deployed, not part of
-  this repo's pending work.
+- Active clone is `/Users/mothilal-kanagaraj/Desktop/dashboard-project` (linked to Vercel project
+  `weekly-marketing-numbers`). `~/dashboard-project` is an older copy without `.vercel` — don't deploy from it.
+- Deploy from inside the project dir only: running `vercel` from another cwd tries to create a new project.
+- `PREVIEW_BYPASS = false`. Last pushed commit on `main`: `535461d`.
 
 ## Exact next steps
 
-1. If picking this up to continue the G2 feature: confirm with the user it's still wanted /
-   still accurate to their latest G2 numbers, then follow "Before shipping this" above.
-2. Otherwise: ask the user what they want to work on next — there is no other pending/unconfirmed
-   work right now beyond G2.
-3. **Update this file again** ("What's currently in progress" + "Current machine state" +
-   append a new numbered history item) at the end of whatever gets done next, before ending the
-   session or running low on context. Don't let it go stale the way this file itself was
-   (~1 month out of date) before this update.
+1. Ask the user what to work on next; nothing else is pending beyond the G2 follow-ups above.
+2. **Update this file again** at the end of whatever gets done next.
 
 ## Standing rules established this session (also in `CLAUDE.md`, repeated here as load-bearing)
 
