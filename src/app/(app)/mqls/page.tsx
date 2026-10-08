@@ -19,6 +19,7 @@ import { ChannelBreakdownGrid } from '@/components/mql/ChannelBreakdownGrid'
 import { MQLJourneyFunnel } from '@/components/mql/MQLJourneyFunnel'
 import { PriorityAnalysis } from '@/components/mql/PriorityAnalysis'
 import { PriorityDetailsTable } from '@/components/mql/PriorityDetailsTable'
+import { MQLUseCases } from '@/components/mql/MQLUseCases'
 import { MQLAgingBuckets } from '@/components/mql/MQLAgingBuckets'
 import { PipelineTrendChart } from '@/components/mql/PipelineTrendChart'
 
@@ -33,7 +34,7 @@ function MQLPageInner() {
     demoBooked: boolean; demoCompleted: boolean; demoNoShow: boolean
   }
   type ContactsByPriority = { high: PriorityContact[]; medium: PriorityContact[]; low: PriorityContact[]; unknown: PriorityContact[] }
-  type Funnel = { mqls: number; meeting_booked: number; demo_booked: number; demo_completed: number; demo_no_show: number; sql: number; opportunity: number; customer: number }
+  type Funnel = { mqls: number; meeting_booked: number; demo_booked: number; demo_completed: number; demo_no_show: number; sql: number; opportunity: number; customer: number; closed_won_count?: number }
 
   // Live HubSpot data
   const [hubspotData, setHubspotData] = useState<{
@@ -131,7 +132,7 @@ function MQLPageInner() {
     const today = new Date()
     const monthStart = format(new Date(today.getFullYear(), today.getMonth(), 1), 'yyyy-MM-dd')
     const monthEnd = format(today, 'yyyy-MM-dd') // exclusive end (LT) -> effectively "through yesterday"
-    fetch(`/api/hubspot/mqls?start=${monthStart}&end=${monthEnd}&nocache=1`)
+    fetch(`/api/hubspot/mqls?start=${monthStart}&end=${monthEnd}&includeClosedWon=1&nocache=1`)
       .then(r => r.json())
       .then(json => {
         if (json && !json.error) {
@@ -439,6 +440,13 @@ function MQLPageInner() {
           <div className="section-label">Priority Details</div>
           {hubspotData?.contacts_by_priority && (
             <PriorityDetailsTable contactsByPriority={hubspotData.contacts_by_priority} dateRangeLabel={`${effectiveStart} → ${effectiveEnd}`} />
+          )}
+
+          {/* 10b. USE CASES — what the MQLs said they came for */}
+          <div className="section-label">Use Cases</div>
+          <div className="section-sub">What problem each MQL said they are trying to solve, grouped into themes</div>
+          {hubspotData?.contacts_by_priority && (
+            <MQLUseCases contacts={allContacts} dateRangeLabel={`${effectiveStart} → ${effectiveEnd}`} />
           )}
 
           {/* 11. MQL AGING */}

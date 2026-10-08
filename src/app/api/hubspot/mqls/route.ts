@@ -92,6 +92,59 @@ async function searchAll(
 
 export const maxDuration = 300
 
+// "Webinar leads" shown on the Leads page exclude (a) registrations for IN-PERSON events hosted on Luma and
+// (b) anything scoring below 50 on lead scoring. HubSpot has no in-person flag, so in-person Luma events are
+// matched by title (the Lead Scoring Agent writes "Luma Registration: <event title>" into lsa_lead_source).
+// Online Luma webinars are NOT excluded. Add new in-person event titles here as they appear.
+const IN_PERSON_LUMA_EVENT = /(agent labs\b|ai made me do it|private sail|sail with siva|off the grid|financial services leadership dinner|leadership dinner|ai leaders'? table|off the record)/i
+const WEBINAR_MIN_SCORE = 50
+
+// --- Priority memory -------------------------------------------------------------------------
+// HubSpot's live lyzr_lead_score / lyzr_lead_score_category get overwritten by the (lower-scoring) v2 model
+// for leads that already had a v1 score (a High at 94 became 60 Medium in HubSpot on 2026-10-05, and whole
+// weeks of High leads were rewritten on Sep 21-24). By request (2026-10-05) the dashboard remembers the
+// HIGHEST priority it has ever seen for each Book a Demo lead and keeps counting it at that level, so past
+// weeks stop shifting. Monotonic: a lead can only move up. Only leads the dashboard has seen are protected;
+// the original v1 scores of leads overwritten before this shipped can't be recovered (seed manually).
+const PRIORITY_RANK: Record<string, number> = { high_priority: 3, medium_priority: 2, low_priority: 1 }
+const rankOf = (c: string) => PRIORITY_RANK[c] || 0
+
+async function applyPriorityMemory(contacts: any[]): Promise<number> {
+  try {
+    const db = getCacheDb()
+    if (!db) return 0
+    const targets = contacts.filter(c => (c.properties?.lead_form_type || '').includes('Book a Demo'))
+    let upgraded = 0
+    for (let i = 0; i < targets.length; i += 200) {
+      const chunk = targets.slice(i, i + 200)
+      const refs = chunk.map(c => db.collection('mql_priority_memory').doc(String(c.id)))
+      const snaps = await db.getAll(...refs)
+      const batch = db.batch()
+      let writes = 0
+      chunk.forEach((c: any, idx: number) => {
+        const props = c.properties || (c.properties = {})
+        const curCat: string = props.lyzr_lead_score_category || ''
+        const curScore = parseFloat(props.lyzr_lead_score || '0') || 0
+        const mem = snaps[idx].exists ? snaps[idx].data() : null
+        if (mem && rankOf(mem.category) > rankOf(curCat)) {
+          // HubSpot now says lower than what we saw before: keep the remembered level and score.
+          props.lyzr_lead_score_category = mem.category
+          props.lyzr_lead_score = String(mem.score)
+          upgraded++
+        } else if (!mem || rankOf(curCat) > rankOf(mem.category) || (rankOf(curCat) === rankOf(mem.category) && curScore > (mem.score || 0))) {
+          batch.set(refs[idx], { category: curCat, score: curScore, updatedAt: new Date(), ...(mem ? {} : { firstSeen: new Date() }) }, { merge: true })
+          writes++
+        }
+      })
+      if (writes) await batch.commit()
+    }
+    return upgraded
+  } catch (e) {
+    console.warn('[mqls] priority memory skipped:', (e as Error).message)
+    return 0
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const start = searchParams.get('start')
@@ -114,7 +167,7 @@ export async function GET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v4_all' : 'v4'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v7_all' : 'v7'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
     if (!noCache) {
@@ -154,6 +207,17 @@ export async function GET(req: NextRequest) {
       'num_associated_deals',
       'createdate',
       'lastmodifieddate',
+      // "Why they came in" hover on the Priority Details table: the Book a Demo form's free-text
+      // message, the products ticked on that form, and (LinkedIn lead-gen) the campaign name.
+      'message',
+      'platform_tools',
+      'which_platforms_or_tools_are_you_currently_using_or_evaluating', // LinkedIn lead-form question; empty today (nothing syncs it into HubSpot)
+      'lead_campaign_name',
+      'lead_source',
+      // Webinar qualification (Luma in-person events are excluded): which Luma event, if any, a
+      // registration came from.
+      'lsa_lead_source',
+      'lead_first_touch_page',
     ]
 
     const bookDemoContacts = await searchAll(
@@ -195,6 +259,7 @@ export async function GET(req: NextRequest) {
 
     let high = 0, medium = 0, low = 0, unknown = 0
     const byFormType: Record<string, number> = {}
+    let webinarQualified = 0 // Webinar-primary leads that pass the Luma in-person + score >= 50 rule
     const bySourceCategory: Record<string, number> = {}
     const formTypeBreakdown: Record<string, { working: number; ads: number; website: number }> = {}
     // "Contains" attribution for Partner Form only — per explicit user instruction 2026-09-21
@@ -353,6 +418,8 @@ export async function GET(req: NextRequest) {
     let statusDemoCompletedPlus = 0
     let statusAssociatedWithDeal = 0
 
+    await applyPriorityMemory(contacts)
+
     for (const c of contacts) {
       const props = c.properties || {}
       const cat = props.lyzr_lead_score_category || ''
@@ -387,6 +454,11 @@ export async function GET(req: NextRequest) {
         demoBooked: DEMO_BOOKED_STATUSES.has(props.hs_lead_status || ''),
         demoCompleted: DEMO_COMPLETED_STATUSES.has(props.hs_lead_status || ''),
         demoNoShow: DEMO_NO_SHOW_STATUSES.has(props.hs_lead_status || ''),
+        message: (props.message || '').trim().slice(0, 600),
+        platformTools: (props.platform_tools || props.which_platforms_or_tools_are_you_currently_using_or_evaluating || '').trim(),
+        campaign: (props.lead_campaign_name || '').trim(),
+        webinarExcluded: false as boolean,
+        leadSource: (props.lead_source || '').trim(),
       }
       if (cat === 'high_priority') contactsByPriority.high.push(contactDetail)
       else if (cat === 'medium_priority') contactsByPriority.medium.push(contactDetail)
@@ -397,6 +469,11 @@ export async function GET(req: NextRequest) {
       // Merge Pre-Built Agents into Book a Demo
       const normalizedForm = primaryForm === 'Pre-Built Agents' ? 'Book a Demo' : primaryForm
       byFormType[normalizedForm] = (byFormType[normalizedForm] || 0) + 1
+      if (normalizedForm === 'Webinar') {
+        const inPersonLuma = /^luma registration:/i.test(props.lsa_lead_source || '') && IN_PERSON_LUMA_EVENT.test(props.lsa_lead_source || '')
+        if (contactDetail.score >= WEBINAR_MIN_SCORE && !inPersonLuma) webinarQualified++
+        else contactDetail.webinarExcluded = true
+      }
       bySourceCategory[sourceCat] = (bySourceCategory[sourceCat] || 0) + 1
 
       // See CONTAINS_ATTRIBUTED_FORMS comment above — credits Partner Form even when it's not
@@ -686,6 +763,7 @@ export async function GET(req: NextRequest) {
       book_demo_website: bookDemoWebsite,
       stage_breakdown: stageBreakdown,
       by_form_type: byFormType,
+      webinar_qualified: webinarQualified,
       by_form_type_contains: byFormTypeContains,
       form_type_breakdown: formTypeBreakdown,
       by_source_category: bySourceCategory,
@@ -699,6 +777,12 @@ export async function GET(req: NextRequest) {
         sql,
         opportunity,
         customer,
+        // Deal-verified Closed Won count, only populated when ?includeClosedWon=1 was passed
+        // (see closedWonContactIds above) — checks the contact's actual associated deal(s) in
+        // the Studio Deals pipeline for dealstage === Closed Won, rather than trusting the
+        // contact's own lifecyclestage label. Per the documented gotcha in CLAUDE.md,
+        // lifecyclestage='customer' does not reliably mean a real Closed Won deal exists.
+        closed_won_count: includeClosedWon ? closedWonContactIds.length : undefined,
       },
       // Pure lifecyclestage-based funnel (independent of hs_lead_status) — for the
       // "Lifecycle Stage Leakage" analysis

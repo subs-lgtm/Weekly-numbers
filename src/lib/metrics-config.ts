@@ -389,7 +389,17 @@ export const SECTIONS: SectionDef[] = [
     key: 'g2',
     label: 'G2',
     description: 'G2 reviews, ratings, buyer intent signals, and growth tracking',
-    metrics: [],
+    // G2 ad platform headline numbers (Impressions/Clicks/Conversions/Spend) — manually entered
+    // for now (2026-09-28), same as every other InlineMetricTable-backed section, until G2 API
+    // access is available to pull these automatically. The topic/competitor click breakdown
+    // below these lives in its own component (G2ClickBreakdown), not here, since it's a ranked
+    // list rather than a flat metric.
+    metrics: [
+      { key: 'g2_impressions', label: 'Impressions', unit: 'number' },
+      { key: 'g2_clicks', label: 'Clicks', unit: 'number' },
+      { key: 'g2_conversions', label: 'Conversions', unit: 'number' },
+      { key: 'g2_spend', label: 'Spend', unit: 'currency' },
+    ],
   },
 ]
 

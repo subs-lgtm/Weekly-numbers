@@ -47,9 +47,6 @@ const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 const SQL_EXACT = new Set(['opportunity'])
 const OPP_STAGES_CUMULATIVE = new Set(['249550600', 'customer']) // reached Opportunity or beyond
 
-const CLOSED_WON_STAGE_ID = '982194449'
-const CLOSED_LOST_STAGE_IDS = new Set(['982194450', '982194451']) // Closed Lost + Dropped
-
 // The Predictive Funnel always projects the 3 most-recent cohorts, regardless of how many
 // months the caller asked to see displayed in the main Cohort Funnel Table.
 const TRAILING_PROJECTION_MONTHS = 3
@@ -99,7 +96,7 @@ async function getCache(period: string, periodClosed: boolean): Promise<any | nu
   try {
     const db = getCacheDb()
     if (!db) return null
-    const doc = await db.collection('executive_cohort_cache_v5').doc(period).get()
+    const doc = await db.collection('executive_cohort_cache_v10').doc(period).get()
     if (!doc.exists) return null
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
@@ -111,7 +108,7 @@ async function setCache(period: string, result: any): Promise<void> {
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('executive_cohort_cache_v5').doc(period).set({ result, cachedAt: new Date() })
+    await db.collection('executive_cohort_cache_v10').doc(period).set({ result, cachedAt: new Date() })
   } catch {}
 }
 
@@ -139,51 +136,7 @@ async function searchContacts(apiKey: string, filters: any[], properties: string
   return results
 }
 
-/**
- * Classify a fixed contact list as WON / LOST / STILL_OPEN, as of right now — verified against
- * each contact's actual associated Deal record in the Studio Deals pipeline, NEVER the contact's
- * own `lifecyclestage` label. Per explicit user instruction: a contact marked lifecyclestage=
- * 'customer' with no real Closed Won deal behind it must NOT count as Customer Won here — the
- * Deal record is the source of truth, the Contact label is not trusted even as a shortcut.
- */
-async function classifyOutcomes(apiKey: string, contacts: Array<{ id: string; lifecyclestage: string }>) {
-  let won = 0, lost = 0, stillOpen = 0
-
-  const BATCH = 8
-  for (let i = 0; i < contacts.length; i += BATCH) {
-    const batch = contacts.slice(i, i + BATCH)
-    const results = await Promise.all(batch.map(async (c) => {
-      try {
-        const assocRes = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/${c.id}/associations/deals?limit=5`, {
-          headers: { Authorization: `Bearer ${apiKey}` },
-        })
-        if (!assocRes.ok) return 'STILL_OPEN'
-        const assocData = await assocRes.json()
-        const dealIds = (assocData.results || []).map((r: any) => r.id)
-        if (dealIds.length === 0) return 'STILL_OPEN'
-        let sawLost = false
-        for (const dealId of dealIds) {
-          const dealRes = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/deals/${dealId}?properties=dealstage`, {
-            headers: { Authorization: `Bearer ${apiKey}` },
-          })
-          if (!dealRes.ok) continue
-          const dealData = await dealRes.json()
-          const stage = dealData.properties?.dealstage
-          if (stage === CLOSED_WON_STAGE_ID) return 'WON'
-          if (CLOSED_LOST_STAGE_IDS.has(stage)) sawLost = true
-        }
-        return sawLost ? 'LOST' : 'STILL_OPEN'
-      } catch { return 'STILL_OPEN' }
-    }))
-    for (const outcome of results) {
-      if (outcome === 'WON') won++
-      else if (outcome === 'LOST') lost++
-      else stillOpen++
-    }
-    if (i + BATCH < contacts.length) await new Promise(r => setTimeout(r, 150))
-  }
-  return { won, lost, stillOpen }
-}
+import { classifyOutcomes, resolveChannel } from '@/lib/marketing-opportunities'
 
 /** One month's cohort: createdate + Book a Demo (the dashboard's MQL definition), current-stage snapshot. */
 async function fetchCohort(apiKey: string, monthStartMs: number, monthEndMs: number) {
@@ -192,38 +145,23 @@ async function fetchCohort(apiKey: string, monthStartMs: number, monthEndMs: num
     { propertyName: 'createdate', operator: 'LT', value: monthEndMs.toString() },
     { propertyName: 'email', operator: 'NOT_CONTAINS_TOKEN', value: 'lyzr.ai' },
     { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' },
-  ], ['lifecyclestage'])
+  ], ['lifecyclestage', 'num_associated_deals', 'lead_source_category', 'hs_analytics_source', 'utm_source', 'utm_medium'])
 
   let sql = 0, workingMqls = 0
-  const oppCumulativeContacts: Array<{ id: string; lifecyclestage: string }> = []
+  const sqlContactIds: string[] = []
+  const dealCandidates: Array<{ id: string; channel: string }> = []
   for (const c of contacts) {
     const stage = c.properties?.lifecyclestage || ''
-    if (SQL_EXACT.has(stage)) sql++
-    // "Working MQLs" — still sitting exactly at the MQL stage: hasn't progressed to SQL/Opp/
-    // Customer yet, AND hasn't been Discarded/Disqualified (those are different current-stage
-    // values, so an exact 'marketingqualifiedlead' match already excludes them). This is the
-    // pool that's still genuinely "in play" and could still convert forward as it ages — the
-    // basis for the projection numbers below.
+    if (SQL_EXACT.has(stage)) { sql++; sqlContactIds.push(c.id) }
+    // "Working MQLs" — still sitting exactly at the MQL stage (not progressed, not discarded).
+    // Basis for the projection numbers below.
     if (stage === 'marketingqualifiedlead') workingMqls++
-    // "Reached Opportunity or beyond" — deliberately CUMULATIVE, not exact-current-stage. A
-    // contact currently marked Customer already passed through Opportunity; excluding them (as
-    // an exact-match would) undercounts "Opportunities" while "Customers Won" stays high, which
-    // produces a backwards, non-shrinking funnel (e.g. Opportunities=1, Customers Won=16) — that
-    // was the actual bug the user flagged, not a display issue.
-    if (OPP_STAGES_CUMULATIVE.has(stage)) oppCumulativeContacts.push({ id: c.id, lifecyclestage: stage })
+    // Opportunities are DEAL-based now: only contacts with at least one associated deal can
+    // possibly qualify, so only those are looked up (lifecyclestage is deliberately ignored).
+    if (parseInt(c.properties?.num_associated_deals || '0', 10) > 0) dealCandidates.push({ id: c.id, channel: resolveChannel(c.properties || {}) })
   }
 
-  return {
-    mqlCount: contacts.length,
-    sqlCount: sql,
-    // "Active SQLs" for the projection table is this same exact-SQL-stage count — contacts
-    // currently sitting at SQL, not yet progressed to Opportunity/Customer or discarded.
-    workingMqls,
-    // Contacts currently at Opportunity-or-beyond — this list is BOTH the "Opportunities" column
-    // denominator AND the exact set that gets deal-verified below for Customers Won. Same
-    // population feeds both, so the two numbers are always mutually consistent.
-    oppCumulativeContacts,
-  }
+  return { mqlCount: contacts.length, sqlCount: sql, workingMqls, sqlContactIds, dealCandidates }
 }
 
 export async function GET(req: NextRequest) {
@@ -265,12 +203,16 @@ export async function GET(req: NextRequest) {
         // just the contact's own lifecyclestage label (which can lag or be set without a real
         // deal behind it). Per explicit user instruction: pull Customers Won from the Deal
         // ("opportunity section"), not from the Contact's lifecyclestage.
-        const opportunityOutcome = await classifyOutcomes(apiKey, cohort.oppCumulativeContacts)
-        cached = { mqlCount: cohort.mqlCount, sqlCount: cohort.sqlCount, workingMqls: cohort.workingMqls, opportunityCount: cohort.oppCumulativeContacts.length, opportunityOutcome }
+        const outcome = await classifyOutcomes(apiKey, cohort.dealCandidates)
+        // SQL-stage contacts that ALSO have a qualifying deal are already counted as Opportunities;
+        // excluding them here keeps "reached SQL or beyond" (projection denominator) double-count free.
+        const sqlWithoutDeal = cohort.sqlContactIds.filter(id => !outcome.opportunityContactIds.has(id)).length
+        const opportunityOutcome = { won: outcome.won, lost: outcome.lost, stillOpen: outcome.stillOpen }
+        cached = { mqlCount: cohort.mqlCount, sqlCount: cohort.sqlCount, sqlWithoutDeal, workingMqls: cohort.workingMqls, opportunityCount: outcome.opportunityCount, opportunityOutcome, opportunityBySource: outcome.bySource, opportunityByChannel: outcome.byChannel }
         await setCache(period, cached)
       }
 
-      const { mqlCount, sqlCount, workingMqls, opportunityCount, opportunityOutcome } = cached
+      const { mqlCount, sqlCount, sqlWithoutDeal, workingMqls, opportunityCount, opportunityOutcome, opportunityBySource, opportunityByChannel } = cached
       const { won, lost, stillOpen } = opportunityOutcome
       const customersWon = won // deal-verified Closed Won count, scoped to this cohort's Opportunity-or-beyond contacts
 
@@ -280,7 +222,8 @@ export async function GET(req: NextRequest) {
         cohortStartDate,
         ageDays,
         maturity,
-        mqlCount, sqlCount, workingMqls, activeSqls: sqlCount, opportunityCount, customersWon,
+        mqlCount, sqlCount, sqlWithoutDeal, workingMqls, activeSqls: sqlWithoutDeal, opportunityCount, customersWon,
+        opportunityBySource: opportunityBySource || {}, opportunityByChannel: opportunityByChannel || {},
         mqlToSql: { pct: mqlCount > 0 ? (sqlCount / mqlCount) * 100 : null },
         sqlToOpportunity: { pct: sqlCount > 0 ? (opportunityCount / sqlCount) * 100 : null },
         opportunityToCustomer: { pct: opportunityCount > 0 ? (customersWon / opportunityCount) * 100 : null },
@@ -312,7 +255,7 @@ export async function GET(req: NextRequest) {
     // who reached SQL, what fraction eventually progressed to Opportunity" is
     // sqlCount + opportunityCount (opportunityCount is already cumulative — currently at
     // Opportunity-or-beyond — so adding sqlCount gives everyone who ever reached SQL at all).
-    const reachedSqlOrBeyond = (c: any) => c.sqlCount + c.opportunityCount
+    const reachedSqlOrBeyond = (c: any) => c.sqlWithoutDeal + c.opportunityCount
 
     // baselineCohorts comes from the FULL internally-fetched set (cohorts, length
     // internalMonths), not from the narrower set the caller asked to display — this is exactly

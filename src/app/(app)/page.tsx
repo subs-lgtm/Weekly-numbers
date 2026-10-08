@@ -102,12 +102,14 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
         }))
       }
       if (allCurr && !allCurr.error) {
-        // Exclude Agent Studio + Book a Demo from total leads — every other form type counts.
-        const excludedCount = (allCurr.by_form_type?.['Book a Demo'] || 0) + (allCurr.by_form_type?.['Agent Studio'] || 0)
+        // Exclude Agent Studio + Book a Demo + Webinar from total leads — every other form type
+        // counts. Webinar added 2026-09-28: a bulk webinar-signup batch (3,464 contacts in one
+        // week) was swamping this number — not a comparable "lead" to an actual form fill.
+        const excludedCount = (allCurr.by_form_type?.['Book a Demo'] || 0) + (allCurr.by_form_type?.['Agent Studio'] || 0) + (allCurr.by_form_type?.['Webinar'] || 0)
         setData(d => ({ ...d, 'mqls:total_leads': String((allCurr.total || 0) - excludedCount) }))
       }
       if (allPrev && !allPrev.error) {
-        const prevExcludedCount = (allPrev.by_form_type?.['Book a Demo'] || 0) + (allPrev.by_form_type?.['Agent Studio'] || 0)
+        const prevExcludedCount = (allPrev.by_form_type?.['Book a Demo'] || 0) + (allPrev.by_form_type?.['Agent Studio'] || 0) + (allPrev.by_form_type?.['Webinar'] || 0)
         setPrevData(d => ({ ...d, 'mqls:total_leads': String((allPrev.total || 0) - prevExcludedCount) }))
       }
       if (metrics && !metrics.error) {

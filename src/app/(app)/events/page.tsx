@@ -3,9 +3,10 @@
 import { SectionShell } from '@/components/SectionShell'
 import { SECTION_MAP } from '@/lib/metrics-config'
 import { DomainRatingSlider } from '@/components/shared/DomainRatingSlider'
+import { InlineMetricTable } from '@/components/InlineMetricTable'
 import { useWeek } from '@/lib/week-context'
 
-const EMBED_URL = 'https://events-performance-dashboard.vercel.app'
+const EMBED_URL = 'https://eventsreporting.lovable.app/'
 
 export default function Page() {
   const { weekStart } = useWeek()
@@ -14,6 +15,9 @@ export default function Page() {
     <SectionShell title={section.label} description={section.description}>
       <div className="space-y-4">
         <DomainRatingSlider sectionKey="events" weekStart={weekStart} sectionLabel={section.label} />
+        {/* Manual for now (typed from the event lead export); to be replaced by a HubSpot sync. The
+            Leads page "Events" card reads Total Number of Leads from here. */}
+        <InlineMetricTable sectionKey="events" metrics={section.metrics} weekStart={weekStart} />
         <div className="rounded-[20px] border border-[#D4CBC0] overflow-hidden shadow-[0_4px_20px_rgba(40,20,10,.07)]" style={{ height: 'calc(100vh - 220px)' }}>
           <iframe
             src={EMBED_URL}

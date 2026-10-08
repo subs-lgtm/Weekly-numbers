@@ -15,6 +15,34 @@ session reading this and you're about to end a turn or run low on context yourse
 "What's currently in progress" and "Current machine state" sections below to match reality
 before you stop — don't leave the next reader a stale snapshot.
 
+## Moving this project to a new machine / new Claude Code session
+
+The actual codebase already lives on GitHub — `https://github.com/subs-lgtm/Weekly-numbers.git`
+(branch `main`) — so the normal way to continue this project elsewhere is `git clone` that URL.
+That alone gets every **committed and pushed** change (everything in "Full session history"
+below through the last entry). Three things a clone will NOT bring across — handle each
+explicitly when setting up a new session:
+
+1. **`.env.local`** — gitignored, never committed (HubSpot API key, Firebase service account,
+   Google Sheets service account, GA4/GSC service account). Copy this file manually (AirDrop,
+   secure transfer, password manager, whatever the user prefers) — the app will not run without
+   it, and there is no other copy of these credentials anywhere in git history.
+2. **Uncommitted local changes** — check `git status --porcelain` right now (also see "Current
+   machine state" below for what it was at the time this file was last updated). If a clone is
+   the transfer mechanism, anything uncommitted needs to be copied over as loose files (or
+   committed to a branch first, with the user's explicit OK) or it's lost.
+3. **`node_modules/` and `.next/`** — never move these; they're gitignored and machine-specific.
+   Just run `npx --yes pnpm@latest install` (or the dev/build commands in `CLAUDE.md`) fresh on
+   the new machine.
+
+If instead the plan is to literally copy the project folder (same machine, new directory, USB,
+cloud drive, etc. — not `git clone`), all three of the above come across for free since they're
+just files on disk; only `node_modules/`/`.next/` are worth excluding to keep the copy small
+(they're safe to delete and regenerate anywhere).
+
+Either way: **read this file and `CLAUDE.md` in full in the new session before doing anything
+else** — that's the whole point of both files existing.
+
 ## Project setup / infra history (not visible in `git log`, established once early on)
 
 - **Vercel project**: created as `weekly-marketing-numbers` under scope `subs-3909s-projects`.
@@ -137,7 +165,14 @@ account `automation@abm-agent.iam.gserviceaccount.com`, credentials in `.env.loc
     project aliased to `events-performance-dashboard.vercel.app`, and pointed this repo's
     Events page iframe at that URL instead. This is now the permanent, working Events embed.
 
-## What's currently in progress (uncommitted, NOT deployed, NOT pushed)
+## [STALE — superseded below] What's currently in progress (uncommitted, NOT deployed, NOT pushed)
+
+Everything in this subsection (through "Then a real, separate bug was found...") describes a
+batch of work that was current as of **2026-08-27**. It has since **all shipped** — confirmed by
+cross-referencing `CLAUDE.md`'s Known Gotchas, which documents the exact-vs-cumulative SQL stage
+decision, the Pipeline Trend scoping, and other items below as settled, deployed facts. Left
+in place for historical detail only — do not treat anything in this subsection as still pending.
+**The real current "in progress" state is in the section below this one.**
 
 The user asked to cross-check the MQL page's "MQL → SQL %" and "SQL → Opportunity %" WoW trend
 charts against a Google Sheet the SDR team actually logs their work in (HubSpot's numbers were
@@ -280,75 +315,167 @@ almost exactly. Confirmed the Monthly Trends page renders 58 for July too.
 
 **None of this is deployed/pushed yet** — bundled with the rest of this pending batch.
 
-## Current machine state (at time of writing — re-check, don't assume it's still true)
+## Full session history, continued (post-2026-08-27, condensed — full detail lives in `CLAUDE.md`'s Known Gotchas, cross-referenced below rather than duplicated)
 
-- The local `next dev` server was **stopped** after the last preview round (not currently
-  running). `PREVIEW_BYPASS = true` is still set in `src/app/(app)/layout.tsx` from that
-  preview — restart with `npx --yes pnpm@latest dev` from this directory if you need to preview
-  again at `http://localhost:3000`.
-- `git status --porcelain` at time of writing:
-  ```
-   M CLAUDE.md
-   M src/app/(app)/layout.tsx
-   M src/app/(app)/mqls/page.tsx
-   M src/app/api/hubspot/mqls/route.ts
-   M src/components/AppSidebar.tsx
-   M src/components/mql/MQLToSQLConversionChart.tsx
-   M src/components/mql/SQLToOppConversionChart.tsx
-  ?? context-handoff.md
-  ?? src/app/(app)/mqls/monthly-trends/
-  ?? src/app/api/sdr-sql-tracker/
-  ?? src/components/mql/MQLPriorityTrendChart.tsx
-  ```
-- Last pushed commit on `main`: `3801368` (see history item 15). Everything above is
-  uncommitted, on top of that.
-- Separate note: `/Users/mothilal-kanagaraj/Desktop/events-performance-dashboard` is a
-  **different git repo / different Vercel project** created in history item 16. It's already
-  fully deployed and is not part of this repo's pending work — don't confuse its existence
-  with something still in progress here.
+Everything below shipped (committed + pushed + deployed to production) unless marked otherwise.
+Chronological, approximate dates from commit context / explicit dates mentioned in `CLAUDE.md`.
+
+17. SDR sheet SQL tracker (`/api/sdr-sql-tracker`, reading the `Meetings Booked` tab) shipped —
+    drives `MQLToSQLConversionChart.tsx`/`SQLToOppConversionChart.tsx` on the MQL page. New
+    "MQL Monthly Trends" sub-page (`/mqls/monthly-trends`) shipped, sourcing HubSpot directly
+    (not the sheet) per explicit user correction.
+18. **Exact-vs-cumulative SQL/Opportunity stage fix (2026-09-ish)** — `SQL_EXACT`/`OPP_EXACT`
+    vs `SQL_STAGES_CUMULATIVE`/`OPP_STAGES_CUMULATIVE` split in `mqls/route.ts`. User confirmed
+    exact-only for the primary scorecards, cumulative kept for leakage/bucket-assignment/Pipeline
+    $ lookups. Full writeup in `CLAUDE.md`.
+19. **2026-09-07, several changes same day**: Qualification Funnel split into
+    `MQLLeadStatusFunnel`/`MQLLifecycleStatusFunnel` (fixed a real data bug — see `CLAUDE.md`);
+    "MQL Journey" renamed "Consolidated MQL Lifecycle Status", narrowed to MQL→SQL→Opportunity→
+    Customer; MQL→SQL chart flipped to `funnel.sql` (HubSpot, weekly), SQL→Opportunity flipped
+    to a new dedicated monthly route (`/api/hubspot/sql-to-opportunity-monthly`, Deal-based,
+    marketing-sourced-only filter); "MQL Journey" MTD anchor fixed to always mean the real
+    current calendar month, independent of the page's week picker; Activity Summary restructured
+    from fixed red/yellow/green lines to free-text rows with no status at all (RAG rollup removed
+    entirely at this point).
+20. **2026-09-14**: RAG board came back as `WeeklyRagStatus.tsx` — a flat, freely-growing
+    red/yellow/green list, NOT per-channel (a first per-channel-card version was explicitly
+    rejected on sight). `DEFAULT_OWNERS` category-key lookup bug fixed in `ActivitySummaryTable.tsx`.
+21. **2026-09-15**: `hs_lead_status`'s "Intro Call ___" status family (new SDR vocabulary,
+    parallel to the older "Demo ___" family) added to `DEMO_BOOKED_STATUSES`/
+    `DEMO_COMPLETED_STATUSES`/`DEMO_NO_SHOW_STATUSES` — fixed a real undercount bug (Meetings
+    Booked: 15 but Demo Completed/No Show both showing 0).
+22. **Executive Dashboard built** (`/executive`, `src/app/api/hubspot/executive-flow/route.ts`
+    + `executive-cohorts/route.ts`, extended `deals-acv/route.ts`) — three separate reporting
+    models (static Business Flow counts, dynamic Pipeline Health snapshot, fixed-denominator
+    Cohort Conversion with maturity buckets). Full plan at
+    `/Users/mothilal-kanagaraj/.claude/plans/async-wobbling-tide.md`. "Customers Won" on this
+    page is deal-verified (checks the contact's associated deal for Closed Won) per explicit
+    user instruction, discovered because `lifecyclestage='customer'` doesn't reliably mean a real
+    closed deal exists (confirmed on real contacts — see `CLAUDE.md`).
+23. Discovered and documented (not a bug, a definitional gap): a contact's `createdate` and its
+    `hs_v2_date_entered_marketingqualifiedlead` can be weeks-to-months apart or never happen —
+    the Executive Dashboard's event-dated counts will lag the main MQL page's `createdate`-based
+    counts. Kept both definitions as deliberately different, confirmed with user.
+24. **`f16e52a`/`f0e6339`** — one real git merge with a colleague's (Nirupam Thapa's) concurrent
+    AWS partner tracker push. Resolved cleanly.
+25. **2026-09-29 — `7d823e1`** — Added "Hiring" as a tracking-only Channel Scorecard channel
+    (`EXTRA_SCORECARD_CHANNELS` in `src/lib/nav-channels.ts`), mirroring the Activity Summary's
+    existing "Hiring" category card. User initially asked to deploy this bundled with unrelated
+    pending G2 work (see below) — caught mid-deploy and corrected to Hiring-only; the G2 work was
+    `git stash`ed out, Hiring deployed alone, then the stash restored. **Lesson recorded in user
+    memory**: don't assume an unqualified "deploy"/"take to production" covers everything
+    sitting in the working tree when multiple distinct features are pending.
+26. **2026-09-28 — `30ea8a9`** — Two fixes shipped together (both confirmed by user first):
+    (a) "Consolidated MQL Lifecycle Status" → "Customer" row now deal-verified via a new
+    `?includeClosedWon=1` param exposing `funnel.closed_won_count` from `mqls/route.ts`
+    (`MQLJourneyFunnel.tsx` prefers this over the raw `lifecyclestage`-based `customer` field
+    when present); (b) a bulk "Webinar" form-type signup batch (3,464 contacts in one week) was
+    being counted as "leads" — inflated Total Leads from ~50 to 3,516 across the Summary page,
+    `LeadFunnelCard.tsx`, and the WoW/MoM trend charts (`LeadsWoWChart.tsx`/`LeadsMoMChart.tsx`/
+    `LeadsComparisonCards.tsx`). Fixed by excluding "Webinar" the same way "Agent Studio"/
+    "Book a Demo" already were, everywhere that exclusion pattern appears. Did NOT touch the
+    dedicated Agent Studio pages/charts or `LeadCategoriesPerformance`/`LeadsDetailsTable` — those
+    still show Webinar as its own row, just not folded into the Total Leads aggregate.
+
+27. **2026-10-04 — HubSpot token outage.** Every HubSpot-backed page returned 401 (token revoked/expired in
+    HubSpot). New private-app token ("Performance Marketing <> Mothilal") set in `.env.local` and in Vercel
+    (Production + Preview) via `vercel env rm/add`, then redeployed. Stale old token still sits in
+    `~/dashboard-project/.env.local` and `~/Desktop/dashboard-project-credentials/.env.local`.
+28. **2026-10-05 — Executive Dashboard Opportunities are now DEAL-based and shared.** The cohort table and the
+    Business Flow cards both use `src/lib/marketing-opportunities.ts` (`classifyOutcomes`, `resolveChannel`): a
+    Book-a-Demo contact created in the month counts as an Opportunity only if it has a Studio Deals pipeline
+    deal with `deal_source` in {Inbound, Marketing, Partner Lead, SI Partner, HyperScalar, Event}. **Excluded on
+    purpose: Direct (labelled "Direct / Outbound"), Referral, Repeat Customer, blank.** The old lifecyclestage-based
+    count was wrong (e.g. Sept showed 10 but only 2 had deals). Customers Won = those whose qualifying deal is
+    Closed Won. Hover on the Opportunities cell shows deal-source + contact-channel distribution; channel uses
+    paid signals (original source/UTMs) first, then `lead_source_category`, else "Unattributed (offline /
+    integration)" — `lead_source_category`="Direct" is mostly integration-created contacts with no web attribution.
+    The cohort anchors on CONTACT create month, so a deal created in Aug from a July contact counts in July
+    (Bastion). Business Flow row is now MONTHLY (month of the selected range vs previous month; month-to-date
+    for the current month, which skips the route cache). Caches: `executive_cohort_cache_v9`,
+    `executive_flow_cache_v4`, mqls `v5`.
+29. **Lead hover ("why they came in").** Priority Details names show the form `message` + products (`platform_tools`)
+    + LinkedIn campaign. LinkedIn lead-gen answers now arrive in HubSpot's `message` field as
+    "What problem are you trying to solve with AI agents?: X\nWhich platforms or tools ...?: Y"; the hover parses
+    that into two labelled rows.
+30. **Leads page categories.** Added Webinars (`Webinar`), Studio Users (`Agent Studio`) cards; Whitepapers,
+    Podcasts, Rb2B cards exist at 0 until HubSpot gets a matching `lead_form_type` value. Webinar and Studio Users
+    are excluded from the "Total Top-of-Funnel Leads" tile (same rule as Total Leads: Webinar/Agent Studio out).
+
+31. **2026-10-05 (later)** — `Direct` ("Direct / Outbound") deal source is counted again for the Book a Demo cohort
+    (every contact there already has a marketing touchpoint; Aug now = First Hospitality + BNP Paribas = 2). Still
+    excluded: Referral, Repeat Customer, blank. New **Use Cases** section under Priority Details on `/mqls`
+    (`src/components/mql/MQLUseCases.tsx`): keyword-themed summary of what MQLs say they came for + table. GSI/SI &
+    Founder Amplification page now embeds `https://lyzr-dashboard.vercel.app/` (was lyzrads-dashboard-eight).
+    **Known data quirk**: for Book-a-Demo leads created Aug 24 - Sep 7 the live `lyzr_lead_score` was overwritten with the
+    v2 shadow score (identical for 100% of contacts, modified Sep 21-24), so HubSpot shows 0 High for those weeks.
+    User decided to leave the history as-is; v2 is treated as the live score going forward. Don't "fix" it in the dashboard.
+
+32. **2026-10-05 — `535461d`** — G2 page shipped (user said "ship the pending G2 work"; deployed to production
+    via `vercel --prod`, then committed and pushed). Contents: the Impressions/Clicks/Conversions/Spend
+    `InlineMetricTable`, the "Clicks by Topic / Competitor" breakdown, and a new read-only **Buyer Intent** card
+    (`src/components/g2/G2BuyerIntent.tsx`, `src/hooks/useG2BuyerIntent.ts`, Firestore `g2_buyer_intent/{weekStart}`).
+    Data source is the lead-scoring MCP (`get_g2_buyer_intent`): a stored snapshot of a Google Sheet that Mothilal
+    fills in by hand every Monday from my.g2.com. G2 has no API for Buyer Intent or Advertising, so nothing is live.
+    Only the 2026-09-28 snapshot existed when this shipped. It was seeded into weeks `2026-09-21` and `2026-09-28`
+    (`scripts/seed-g2-buyer-intent.mjs`; `scripts/` is git-ignored). Clicks=389 (real, 589 incl. 200 duplicates) and
+    Spend=$2,690.28 cover Sep 17-28 and are written to BOTH weeks, so WoW shows 0%. Impressions/Conversions have no
+    source and are blank. Gotcha hit: the page opens on the current week, so data seeded only into the previous
+    week showed as empty.
+
+## What's currently in progress — accurate as of 2026-10-05
+
+Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
+- After the next Monday G2 sheet refresh, overwrite the `2026-09-28` Clicks/Spend (currently a copy of the Sep 17-28
+  snapshot) and seed the new week's Buyer Intent / topics / competitors.
+- Impressions and Conversions need a manual entry from the G2 portal (no data source).
+
+## Current machine state (accurate as of 2026-10-05 — re-check before trusting)
+
+- Active clone is `/Users/mothilal-kanagaraj/Desktop/dashboard-project` (linked to Vercel project
+  `weekly-marketing-numbers`). `~/dashboard-project` is an older copy without `.vercel` — don't deploy from it.
+- Deploy from inside the project dir only: running `vercel` from another cwd tries to create a new project.
+- `PREVIEW_BYPASS = false`. Last pushed commit on `main`: `535461d`.
 
 ## Exact next steps
 
-1. **Confirm the user has approved the preview** (re-read recent messages; if unconfirmed,
-   ask — don't assume).
-2. Revert `PREVIEW_BYPASS` in `src/app/(app)/layout.tsx` back to:
-   ```tsx
-   export default function AppLayout({ children }: { children: ReactNode }) {
-     const { loading, user } = useAuth();
-     const router = useRouter();
-     const pathname = usePathname();
-
-     useEffect(() => {
-       if (!loading && !user) {
-         const redirect = pathname || "/";
-         router.replace(`/login?redirect=${encodeURIComponent(redirect)}`);
-       }
-     }, [loading, user, router, pathname]);
-
-     if (loading || !user) {
-   ```
-   (delete the `const PREVIEW_BYPASS = true;` line and the two conditionals wrapping it — diff
-   against git if unsure).
-3. Kill the dev server, `rm -rf .next`, `npx --yes pnpm@latest build` — confirm clean (check
-   both head and tail of the output).
-4. `npx --yes vercel --prod --yes --scope subs-3909s-projects`, confirm `"target": "production"`
-   in the response and the aliased URL.
-5. `git status --porcelain` to confirm only the intended files changed (no `.next/`,
-   `node_modules/`, `.env*`), `git fetch origin && git log HEAD..origin/main --oneline` to
-   check for new remote commits, then `git add` the specific files (not `-A`), commit
-   (`Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`), and push.
-6. Report back to the user with the production URL and a summary of what changed.
-7. **Delete or update this file once the handoff is complete** — it's a working document, not
-   permanent documentation; once the pending task ships, either remove it or replace its
-   "in progress" section with whatever the *new* in-progress task is, so it doesn't go stale
-   and mislead the next session.
+1. Ask the user what to work on next; nothing else is pending beyond the G2 follow-ups above.
+2. **Update this file again** at the end of whatever gets done next.
 
 ## Standing rules established this session (also in `CLAUDE.md`, repeated here as load-bearing)
 
 - Never push `.next/`, `node_modules/`, or `.env*` — verify before every commit, not just once.
 - Never bundle an unconfirmed/unreviewed change into a deploy of confirmed work — `git stash
-  push -- <files>` the unconfirmed ones out first, deploy+push the confirmed work, `git stash
+  push -u -- <files>` the unconfirmed ones out first, deploy+push the confirmed work, `git stash
   pop` to restore.
 - Don't ask permission for routine build/deploy/push steps once a change is confirmed — but do
   flag genuine ambiguity (e.g. a request that could mean two different things) rather than
   guessing, especially after a change has already gone wrong once from a wrong guess.
+- When a "Customer"/"Closed Won" number is needed anywhere new, default to deal-verified
+  (associated deal's `dealstage`), not raw `lifecyclestage='customer'` — this has now been
+  wrong often enough (Executive Dashboard, Consolidated MQL Lifecycle Status) that it should be
+  the starting assumption, not something re-discovered each time.
+
+32. **2026-10-05 (evening) — Webinar leads rule on the Leads page.** The Webinars card / lead table count only Webinar-primary
+    leads with `lyzr_lead_score >= 50` that are NOT registrations for in-person Luma events. HubSpot has no in-person flag, so
+    `IN_PERSON_LUMA_EVENT` in `src/app/api/hubspot/mqls/route.ts` matches the event title in `lsa_lead_source`
+    ("Luma Registration: <title>"): Agent Labs, AI Made Me Do It, Off the Grid/private sail, Sail with Siva, leadership dinner,
+    AI Leaders' Table/Off the Record. Edit that regex when new in-person events appear. API returns `webinar_qualified`
+    and a per-contact `webinarExcluded`; `by_form_type.Webinar` stays RAW on purpose (Total Leads subtracts it). Cache: mqls `v6`.
+33. **2026-10-05 (night) — Socials tab + Events embed.** New sidebar item "Socials" (`/socials`, iframe of
+    `https://data-cheer-up.lovable.app/`, LinkedIn + X + Reddit) placed first in the Social & Influencers group; the two old
+    pages are now titled "Social - legacy" (`/social-influencers`) and "Reddit - legacy" (`/reddit`) — only nav titles changed,
+    urls/scorecard ids untouched. Events page now embeds `https://eventsreporting.lovable.app/` (was events-performance-dashboard.vercel.app).
+    NOTE for deploys: `vercel --prod` uploads the local folder, not git — a colleague's change that was never pushed to GitHub
+    gets overwritten by the next deploy from this folder. Always `git fetch` first and ask teammates to push to `main`.
+34. **2026-10-05 — Events leads are MANUAL for now.** `weekly_metrics/{week}/sections/events/entries/total_leads` (Events page
+    "Total Number of Leads" table, `InlineMetricTable`) holds the count; seeded 67 for week 2026-09-28 from a lead export
+    (~/Downloads/table.tsv). The Leads page "Events (Booth Event)" card shows that manual number for the selected week (weekly
+    growth vs previous week's manual number; monthly growth still HubSpot). Replace with a HubSpot sync later.
+35. **2026-10-05 — Priority memory.** HubSpot overwrites `lyzr_lead_score`/`lyzr_lead_score_category` with the lower v2 score
+    for leads that already had a v1 score (Jayant Raman 94 High -> 60 Medium at 10:54 UTC; whole weeks Aug 24-Sep 7 lost their
+    Highs). By request, `/api/hubspot/mqls` now remembers each Book a Demo lead's HIGHEST priority + score in Firestore
+    `mql_priority_memory/{contactId}` (monotonic - never lowered) and applies it BEFORE the counting loop (`applyPriorityMemory`),
+    so High/Medium/Low counts, Priority Details and the trend cards stop shifting. Protects only leads seen from now on; the
+    already-overwritten v1 scores (Aug 24 - Sep 7 etc.) are unrecoverable. Jayant Raman was seeded manually (94). Cache: mqls `v7`.
+    Don't "simplify" this back to reading HubSpot's category directly without asking.

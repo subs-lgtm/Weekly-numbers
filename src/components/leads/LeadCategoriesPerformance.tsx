@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { BookOpen, GraduationCap, Mail, Handshake, Building2, Cloud, Briefcase, Tent, Inbox, TrendingUp, TrendingDown, Minus, ArrowRight } from 'lucide-react'
+import { BookOpen, GraduationCap, Mail, Handshake, Building2, Cloud, Briefcase, Tent, Inbox, TrendingUp, TrendingDown, Minus, ArrowRight, Video, Code2, FileText, Mic, ScanSearch } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type LeadContact = {
@@ -32,15 +32,25 @@ type Props = {
   prevMonth: PeriodData
 }
 
-const CATEGORY_DEFS = [
+// `inTotal: false` keeps bulk/volume form types out of the "Total Top-of-Funnel Leads" tile — Webinar
+// and Studio sign-ups are shown as their own cards but are not comparable to an actual lead form fill
+// (same rule as Total Leads elsewhere: Webinar / Agent Studio are excluded). `pending: true` marks a
+// channel with NO distinguishing value in HubSpot yet (no lead_form_type option, no source tag), so its
+// card reads 0 until the form is tagged — the key is the exact lead_form_type value to create.
+const CATEGORY_DEFS: Array<{ key: string; label: string; icon: any; inTotal?: boolean; pending?: boolean; noConv?: boolean }> = [
+  { key: 'Webinar', label: 'Webinars', icon: Video, inTotal: false },
+  { key: 'Booth Event', label: 'Events (Booth Event)', icon: Tent },
   { key: 'Playbook Download', label: 'Playbook Download', icon: BookOpen },
+  { key: 'Whitepaper', label: 'Whitepapers', icon: FileText, pending: true },
+  { key: 'Podcast', label: 'Podcasts', icon: Mic, pending: true },
+  { key: 'RB2B', label: 'Rb2B', icon: ScanSearch, pending: true },
+  { key: 'Agent Studio', label: 'Studio Users', icon: Code2, inTotal: false, noConv: true },
   { key: 'Masterclass', label: 'Masterclass', icon: GraduationCap },
   { key: 'Contact Us', label: 'Contact Us', icon: Mail },
   { key: 'Partner Form', label: 'Partner Form', icon: Handshake },
   { key: 'GSI and SI', label: 'GSI and SI', icon: Building2 },
   { key: 'AWS Partner Form', label: 'AWS Partner Form', icon: Cloud },
   { key: 'Accenture', label: 'Accenture', icon: Briefcase },
-  { key: 'Booth Event', label: 'Booth Event', icon: Tent },
   { key: 'Email Form', label: 'Email Form', icon: Inbox },
 ]
 
@@ -99,9 +109,9 @@ export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevM
     })
   }, [currWeek, prevWeek, currMonth, prevMonth])
 
-  // Total top-of-funnel leads (sum of all 9 categories)
+  // Total top-of-funnel leads (sum of the categories flagged inTotal)
   const totalTopLeads = useMemo(() => {
-    return cardData.reduce((sum, item) => sum + item.count, 0)
+    return cardData.filter(item => item.inTotal !== false).reduce((sum, item) => sum + item.count, 0)
   }, [cardData])
 
   // Sort cards based on selected tab
@@ -160,6 +170,12 @@ export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevM
                 <p className="text-[32px] font-[700] text-[#2A1F1A] leading-tight font-['Playfair_Display']">
                   {card.count.toLocaleString()}
                 </p>
+                {card.pending && card.count === 0 && (
+                  <p className="mt-1 text-[10px] leading-snug text-[#B9822E]">Not tracked in HubSpot yet — needs a &ldquo;{card.key}&rdquo; Lead Form Type on its form.</p>
+                )}
+                {card.inTotal === false && (
+                  <p className="mt-1 text-[10px] leading-snug text-[#7A6A60]">Not counted in Total Top-of-Funnel Leads.</p>
+                )}
               </div>
 
               <div className="mt-4 space-y-2 pt-3 border-t border-[#F2EDE8] text-[11px]">
@@ -191,7 +207,7 @@ export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevM
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[#7A6A60]">Conv. to MQL</span>
-                  <span className="font-[600] text-[#2A1F1A]">{card.convRate}%</span>
+                  <span className="font-[600] text-[#2A1F1A]">{card.noConv ? '—' : `${card.convRate}%`}</span>
                 </div>
               </div>
             </div>

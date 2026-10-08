@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { SectionShell } from '@/components/SectionShell'
 import { SECTION_MAP } from '@/lib/metrics-config'
 import { useWeek } from '@/lib/week-context'
+import { useWeeklyMetrics, usePrevWeekMetrics } from '@/hooks/useWeeklyMetrics'
 import { LeadFunnelCard } from '@/components/leads/LeadFunnelCard'
 import { LeadCategoriesPerformance } from '@/components/leads/LeadCategoriesPerformance'
 import { LeadsComparisonCards } from '@/components/leads/LeadsComparisonCards'
@@ -14,6 +15,14 @@ import { format, subWeeks, subMonths, startOfMonth, endOfMonth, addDays } from '
 
 function LeadsPageInner() {
   const { weekStart, queryStart, queryEnd } = useWeek()
+
+  // Events leads are entered by hand for now (Events page -> Total Number of Leads) until a HubSpot sync
+  // exists; when a number has been entered for the selected week it replaces the HubSpot "Booth Event"
+  // count on the Events card. Weekly growth compares against the previous week's manual number.
+  const { data: eventsMetrics } = useWeeklyMetrics('events', weekStart)
+  const prevEventsMetrics = usePrevWeekMetrics('events', weekStart)
+  const manualEvents = parseInt(eventsMetrics['total_leads']?.value ?? '', 10)
+  const manualPrevEvents = parseInt(prevEventsMetrics['total_leads']?.value ?? '', 10)
 
   // MoM: compare the month the selected week falls in vs the previous month
   const selectedDate = useMemo(() => new Date(weekStart + 'T00:00:00'), [weekStart])
@@ -65,7 +74,7 @@ function LeadsPageInner() {
         contacts.push(...data.currWeek.contacts_by_priority[p])
       }
     }
-    return contacts.filter(c => c.formType !== 'Agent Studio')
+    return contacts.filter(c => c.formType !== 'Agent Studio' && !c.webinarExcluded)
   }, [data])
 
   const prevWeekContacts = useMemo(() => {
@@ -77,7 +86,7 @@ function LeadsPageInner() {
         contacts.push(...data.prevWeek.contacts_by_priority[p])
       }
     }
-    return contacts.filter(c => c.formType !== 'Agent Studio')
+    return contacts.filter(c => c.formType !== 'Agent Studio' && !c.webinarExcluded)
   }, [data])
 
   const currMonthContacts = useMemo(() => {
@@ -89,7 +98,7 @@ function LeadsPageInner() {
         contacts.push(...data.currMonth.contacts_by_priority[p])
       }
     }
-    return contacts.filter(c => c.formType !== 'Agent Studio')
+    return contacts.filter(c => c.formType !== 'Agent Studio' && !c.webinarExcluded)
   }, [data])
 
   const prevMonthContacts = useMemo(() => {
@@ -101,17 +110,17 @@ function LeadsPageInner() {
         contacts.push(...data.prevMonth.contacts_by_priority[p])
       }
     }
-    return contacts.filter(c => c.formType !== 'Agent Studio')
+    return contacts.filter(c => c.formType !== 'Agent Studio' && !c.webinarExcluded)
   }, [data])
 
   const contactsByPriority = useMemo(() => {
     const raw = data?.currWeek?.contacts_by_priority || { high: [], medium: [], low: [], unknown: [] }
     const EXCLUDED_FORMS = new Set(['Agent Studio', 'Book a Demo', 'Email Form', 'Pre-Built Agents'])
     return {
-      high: (raw.high || []).filter((c: any) => !EXCLUDED_FORMS.has(c.formType)),
-      medium: (raw.medium || []).filter((c: any) => !EXCLUDED_FORMS.has(c.formType)),
-      low: (raw.low || []).filter((c: any) => !EXCLUDED_FORMS.has(c.formType)),
-      unknown: (raw.unknown || []).filter((c: any) => !EXCLUDED_FORMS.has(c.formType)),
+      high: (raw.high || []).filter((c: any) => !EXCLUDED_FORMS.has(c.formType) && !c.webinarExcluded),
+      medium: (raw.medium || []).filter((c: any) => !EXCLUDED_FORMS.has(c.formType) && !c.webinarExcluded),
+      low: (raw.low || []).filter((c: any) => !EXCLUDED_FORMS.has(c.formType) && !c.webinarExcluded),
+      unknown: (raw.unknown || []).filter((c: any) => !EXCLUDED_FORMS.has(c.formType) && !c.webinarExcluded),
     }
   }, [data])
 
@@ -130,19 +139,24 @@ function LeadsPageInner() {
   // the Book-a-Demo MQL definition elsewhere); `by_form_type_contains` is the additive counter
   // for this one form type. Only overriding the 'Partner Form' key so every other category card
   // keeps its existing primary-only count.
-  const withPartnerFormContains = (byFormType: Record<string, number> | undefined, byFormTypeContains: Record<string, number> | undefined) => ({
+  // Webinar: the card counts only qualified webinar leads (not in-person Luma events, lead score >= 50);
+  // `webinar_qualified` comes from the API. by_form_type['Webinar'] itself stays the raw count because the
+  // Total Leads maths elsewhere subtracts it.
+  const withPartnerFormContains = (byFormType: Record<string, number> | undefined, byFormTypeContains: Record<string, number> | undefined, webinarQualified?: number, boothEvents?: number) => ({
     ...(byFormType || {}),
     'Partner Form': byFormTypeContains?.['Partner Form'] ?? byFormType?.['Partner Form'] ?? 0,
+    ...(webinarQualified !== undefined ? { Webinar: webinarQualified } : {}),
+    ...(boothEvents !== undefined && !Number.isNaN(boothEvents) ? { 'Booth Event': boothEvents } : {}),
   })
 
   return (
     <div className="space-y-6">
       {/* 1. Lead Categories Performance */}
       <LeadCategoriesPerformance
-        currWeek={{ contacts: currWeekContacts, byFormType: withPartnerFormContains(data.currWeek.by_form_type, data.currWeek.by_form_type_contains) }}
-        prevWeek={{ contacts: prevWeekContacts, byFormType: withPartnerFormContains(data.prevWeek.by_form_type, data.prevWeek.by_form_type_contains) }}
-        currMonth={{ contacts: currMonthContacts, byFormType: withPartnerFormContains(data.currMonth.by_form_type, data.currMonth.by_form_type_contains) }}
-        prevMonth={{ contacts: prevMonthContacts, byFormType: withPartnerFormContains(data.prevMonth.by_form_type, data.prevMonth.by_form_type_contains) }}
+        currWeek={{ contacts: currWeekContacts, byFormType: withPartnerFormContains(data.currWeek.by_form_type, data.currWeek.by_form_type_contains, data.currWeek.webinar_qualified, manualEvents) }}
+        prevWeek={{ contacts: prevWeekContacts, byFormType: withPartnerFormContains(data.prevWeek.by_form_type, data.prevWeek.by_form_type_contains, data.prevWeek.webinar_qualified, manualPrevEvents) }}
+        currMonth={{ contacts: currMonthContacts, byFormType: withPartnerFormContains(data.currMonth.by_form_type, data.currMonth.by_form_type_contains, data.currMonth.webinar_qualified) }}
+        prevMonth={{ contacts: prevMonthContacts, byFormType: withPartnerFormContains(data.prevMonth.by_form_type, data.prevMonth.by_form_type_contains, data.prevMonth.webinar_qualified) }}
       />
 
       {/* 2. Comparison cards — WoW and MoM */}
