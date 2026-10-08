@@ -66,11 +66,9 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
       fetch(`/api/hubspot/mqls?start=${prevWeek}&end=${prevWeekEnd}&nocache=1`).then(r => r.json()).catch(() => null),
       fetch(`/api/hubspot/mqls?start=${start}&end=${end}&mode=all&nocache=1`).then(r => r.json()).catch(() => null),
       fetch(`/api/hubspot/mqls?start=${prevWeek}&end=${prevWeekEnd}&mode=all&nocache=1`).then(r => r.json()).catch(() => null),
-      fetch(`/api/summary-metrics?start=${start}&end=${end}`).then(r => r.json()).catch(() => null),
-      fetch(`/api/summary-metrics?start=${prevWeek}&end=${prevWeekEnd}`).then(r => r.json()).catch(() => null),
       fetch(`/api/hubspot/gsi-leads?start=${start}&end=${end}`).then(r => r.json()).catch(() => null),
       fetch(`/api/hubspot/gsi-leads?start=${prevWeek}&end=${prevWeekEnd}`).then(r => r.json()).catch(() => null),
-    ]).then(([curr, prev, allCurr, allPrev, metrics, prevMetrics, gsi, prevGsi]) => {
+    ]).then(([curr, prev, allCurr, allPrev, gsi, prevGsi]) => {
       if (curr && !curr.error) {
         setData(d => ({
           ...d,
@@ -111,21 +109,6 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
       if (allPrev && !allPrev.error) {
         const prevExcludedCount = (allPrev.by_form_type?.['Book a Demo'] || 0) + (allPrev.by_form_type?.['Agent Studio'] || 0) + (allPrev.by_form_type?.['Webinar'] || 0)
         setPrevData(d => ({ ...d, 'mqls:total_leads': String((allPrev.total || 0) - prevExcludedCount) }))
-      }
-      if (metrics && !metrics.error) {
-        setData(d => ({
-          ...d,
-          // Only write API value if not manually overridden in Firestore
-          ...(!manualKeys.current.has('ads:total_spend') ? { 'ads:total_spend': String(metrics.adSpend || 0) } : {}),
-          'seo:organic_traffic': String(metrics.organicTraffic || 0),
-        }))
-      }
-      if (prevMetrics && !prevMetrics.error) {
-        setPrevData(d => ({
-          ...d,
-          ...(!prevManualKeys.current.has('ads:total_spend') ? { 'ads:total_spend': String(prevMetrics.adSpend || 0) } : {}),
-          'seo:organic_traffic': String(prevMetrics.organicTraffic || 0),
-        }))
       }
       if (gsi && !gsi.error) {
         setData(d => ({

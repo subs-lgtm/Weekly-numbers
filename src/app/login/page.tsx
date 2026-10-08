@@ -11,7 +11,7 @@ function LoginForm() {
   const redirectParam = params.get("redirect");
   const redirect = redirectParam && redirectParam.startsWith("/") ? redirectParam : "/";
 
-  const { signIn, signInWithGoogle, signUp, user } = useAuth();
+  const { signIn, signInWithGoogle, signInWithMicrosoft, signUp, user } = useAuth();
   const [tab, setTab] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,6 +68,28 @@ function LoginForm() {
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
           </svg>
           Sign in with Google
+        </button>
+
+        {/* Microsoft Button */}
+        <button
+          type="button"
+          onClick={async () => {
+            setError(null);
+            setBusy(true);
+            const { error: err } = await signInWithMicrosoft();
+            setBusy(false);
+            if (err) setError(err);
+          }}
+          disabled={busy}
+          className="mt-3 w-full flex items-center justify-center gap-3 rounded-[12px] border border-[#D4CBC0] bg-white px-4 py-3 text-[15px] font-[500] text-[#2A1F1A] hover:border-[#6B4C4C] hover:shadow-[0_2px_8px_rgba(107,76,76,.1)] transition-all disabled:opacity-50"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 21 21">
+            <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+            <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+            <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+            <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+          </svg>
+          Sign in with Microsoft
         </button>
 
         {/* Divider */}
@@ -155,7 +177,7 @@ function LoginForm() {
 
       {/* Footer */}
       <p className="text-center text-[12px] text-[#A89A8E] mt-6">
-        Only @lyzr.ai emails are allowed. Contact admin for access.
+        Only @lyzr.ai (Google) or @lyzr.com (Microsoft) emails are allowed. Contact admin for access.
       </p>
     </div>
   );
