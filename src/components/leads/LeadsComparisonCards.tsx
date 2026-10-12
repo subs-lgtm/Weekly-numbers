@@ -94,10 +94,10 @@ export function LeadsComparisonCards({ weekStart }: Props) {
 
     async function fetchAll() {
       const [wowCurr, wowPr, momCurr, momPr] = await Promise.all([
-        fetch(`/api/hubspot/mqls?start=${weekStart}&end=${weekEnd}&mode=all`).then(r => r.json()).catch(() => ({ total: 0 })),
-        fetch(`/api/hubspot/mqls?start=${prevWeekStart}&end=${prevWeekEnd}&mode=all`).then(r => r.json()).catch(() => ({ total: 0 })),
-        fetch(`/api/hubspot/mqls?start=${currentMonthStart}&end=${currentMonthEnd}&mode=all`).then(r => r.json()).catch(() => ({ total: 0 })),
-        fetch(`/api/hubspot/mqls?start=${prevMonthStart}&end=${prevMonthEnd}&mode=all`).then(r => r.json()).catch(() => ({ total: 0 })),
+        fetch(`/api/hubspot/mqls?start=${weekStart}&end=${weekEnd}&mode=all&slim=1`).then(r => r.json()).catch(() => ({ total: 0 })),
+        fetch(`/api/hubspot/mqls?start=${prevWeekStart}&end=${prevWeekEnd}&mode=all&slim=1`).then(r => r.json()).catch(() => ({ total: 0 })),
+        fetch(`/api/hubspot/mqls?start=${currentMonthStart}&end=${currentMonthEnd}&mode=all&slim=1`).then(r => r.json()).catch(() => ({ total: 0 })),
+        fetch(`/api/hubspot/mqls?start=${prevMonthStart}&end=${prevMonthEnd}&mode=all&slim=1`).then(r => r.json()).catch(() => ({ total: 0 })),
       ])
       if (!cancelled) {
         // Exclude Book a Demo forms, Agent Studio, and Webinar (bulk batches that aren't

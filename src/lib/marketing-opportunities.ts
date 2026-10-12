@@ -100,3 +100,83 @@ export function resolveChannel(props: Record<string, string | null | undefined>)
   return 'Unattributed (offline / integration)'
 }
 
+
+// --- Opportunity details (value / stage / age) for the Executive Dashboard pipeline breakdown ---------
+
+export const STAGE_INFO: Record<string, { label: string; group: 'top' | 'middle' | 'bottom' | 'won' | 'lost' | 'stalled' }> = {
+  '982424357': { label: 'Discovery Call', group: 'top' },
+  '982424358': { label: 'Qualification', group: 'top' },
+  '982424359': { label: 'Solution Validation', group: 'middle' },
+  '982424360': { label: 'Proposal', group: 'middle' },
+  '982194447': { label: 'Negotiation', group: 'bottom' },
+  '982194448': { label: 'Legal & Contracts', group: 'bottom' },
+  '982194449': { label: 'Closed Won', group: 'won' },
+  '982194450': { label: 'Closed Lost', group: 'lost' },
+  '982194451': { label: 'Dropped', group: 'lost' },
+  '1068884838': { label: 'Stalled', group: 'stalled' },
+}
+/** An open deal that has sat in the same top/middle/stalled stage longer than this is flagged as stuck. */
+export const STUCK_AFTER_DAYS = 30
+
+export type OpportunityDetail = {
+  contactId: string
+  dealId: string
+  name: string
+  amount: number
+  stageId: string
+  stage: string
+  group: 'top' | 'middle' | 'bottom' | 'won' | 'lost' | 'stalled' | 'unknown'
+  dealSource: string
+  channel: string
+  createdAt: string
+  daysInStage: number
+  stuck: boolean
+}
+
+/**
+ * One row per cohort contact that counts as an Opportunity (same qualification as classifyOutcomes). When a
+ * contact has several qualifying deals the one with the largest amount (then the newest) is used, so the
+ * count stays "contacts" like the cohort table while the value is that deal's amount.
+ */
+export async function fetchOpportunityDetails(apiKey: string, candidates: Array<{ id: string; channel: string }>): Promise<OpportunityDetail[]> {
+  const out: OpportunityDetail[] = []
+  const headers = { Authorization: `Bearer ${apiKey}` }
+  const BATCH = 8
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    const rows = await Promise.all(candidates.slice(i, i + BATCH).map(async (cand) => {
+      try {
+        const a = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/${cand.id}/associations/deals?limit=10`, { headers })
+        if (!a.ok) return null
+        const ids: string[] = ((await a.json()).results || []).map((r: any) => r.id)
+        const deals: any[] = []
+        for (const id of ids) {
+          const d = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/deals/${id}?properties=dealname,amount,dealstage,pipeline,deal_source,createdate,hs_v2_date_entered_current_stage`, { headers })
+          if (!d.ok) continue
+          const dj = await d.json()
+          const p = dj.properties || {}
+          if (p.pipeline !== STUDIO_DEALS_PIPELINE_ID || !MARKETING_DEAL_SOURCES.has(p.deal_source)) continue
+          deals.push({ id: dj.id, ...p })
+        }
+        if (!deals.length) return null
+        deals.sort((x, y) => (parseFloat(y.amount || '0') - parseFloat(x.amount || '0')) || String(y.createdate).localeCompare(String(x.createdate)))
+        const best = deals[0]
+        const info = STAGE_INFO[best.dealstage]
+        const since = new Date(best.hs_v2_date_entered_current_stage || best.createdate).getTime()
+        const daysInStage = Math.max(0, Math.floor((Date.now() - since) / 86_400_000))
+        const group = info?.group ?? 'unknown'
+        const open = group === 'top' || group === 'middle' || group === 'stalled'
+        return {
+          contactId: cand.id, dealId: String(best.id), name: best.dealname || '(unnamed)',
+          amount: parseFloat(best.amount || '0') || 0,
+          stageId: best.dealstage, stage: info?.label ?? best.dealstage, group,
+          dealSource: DEAL_SOURCE_LABELS[best.deal_source] || best.deal_source,
+          channel: cand.channel, createdAt: best.createdate,
+          daysInStage, stuck: open && daysInStage > STUCK_AFTER_DAYS,
+        } as OpportunityDetail
+      } catch { return null }
+    }))
+    for (const r of rows) if (r) out.push(r)
+    if (i + BATCH < candidates.length) await new Promise(r => setTimeout(r, 150))
+  }
+  return out
+}

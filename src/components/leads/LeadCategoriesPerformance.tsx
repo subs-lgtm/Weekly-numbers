@@ -11,6 +11,8 @@ type LeadContact = {
   lifecycleStage: string
   source: string
   status: string
+  score?: number
+  autoLifecycle?: boolean
 }
 
 // Categories where a contact should count if the key appears ANYWHERE in their (semicolon-
@@ -37,14 +39,14 @@ type Props = {
 // (same rule as Total Leads elsewhere: Webinar / Agent Studio are excluded). `pending: true` marks a
 // channel with NO distinguishing value in HubSpot yet (no lead_form_type option, no source tag), so its
 // card reads 0 until the form is tagged — the key is the exact lead_form_type value to create.
-const CATEGORY_DEFS: Array<{ key: string; label: string; icon: any; inTotal?: boolean; pending?: boolean; noConv?: boolean }> = [
+const CATEGORY_DEFS: Array<{ key: string; label: string; icon: any; inTotal?: boolean; pending?: boolean; noConv?: boolean; noHigh?: boolean }> = [
   { key: 'Webinar', label: 'Webinars', icon: Video, inTotal: false },
-  { key: 'Booth Event', label: 'Events (Booth Event)', icon: Tent },
+  { key: 'Booth Event', label: 'Events (Booth Event)', icon: Tent, noHigh: true },
   { key: 'Playbook Download', label: 'Playbook Download', icon: BookOpen },
   { key: 'Whitepaper', label: 'Whitepapers', icon: FileText, pending: true },
   { key: 'Podcast', label: 'Podcasts', icon: Mic, pending: true },
   { key: 'RB2B', label: 'Rb2B', icon: ScanSearch, pending: true },
-  { key: 'Agent Studio', label: 'Studio Users', icon: Code2, inTotal: false, noConv: true },
+  { key: 'Agent Studio', label: 'Studio Users', icon: Code2, inTotal: false, noConv: true, noHigh: true },
   { key: 'Masterclass', label: 'Masterclass', icon: GraduationCap },
   { key: 'Contact Us', label: 'Contact Us', icon: Mail },
   { key: 'Partner Form', label: 'Partner Form', icon: Handshake },
@@ -58,6 +60,8 @@ function getMqlsCount(contacts: LeadContact[]) {
   const MQL_FORMS = new Set(['Book a Demo', 'Email Form', 'Pre-Built Agents', 'GSI and SI', 'Accenture', 'Partner Form'])
   return contacts.filter(c => {
     if (MQL_FORMS.has(c.formType)) return true
+    // A lifecycle stage HubSpot copied from the contact's company (no person / workflow moved it) is not a conversion.
+    if (c.autoLifecycle) return false
     const stage = c.lifecycleStage || ''
     return ['marketingqualifiedlead', 'salesqualifiedlead', 'opportunity', 'customer', '249550600'].includes(stage)
   }).length
@@ -74,6 +78,11 @@ function calculateGrowth(current: number, prev: number): { pct: number; label: s
     dir: pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat',
   }
 }
+
+// Every card's headline number is OVERALL leads for that category. High-priority leads (lead score above
+// this threshold) are shown as a separate secondary line and are never folded into the headline (leadership
+// request 2026-10-12: don't mix overall and high-priority populations in one total).
+const HIGH_PRIORITY_SCORE = 60
 
 export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevMonth }: Props) {
   const [tab, setTab] = useState<'volume' | 'growth' | 'conversion'>('volume')
@@ -99,9 +108,12 @@ export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevM
       const catMqls = getMqlsCount(catContacts)
       const convRate = catContacts.length > 0 ? Math.round((catMqls / catContacts.length) * 100) : 0
 
+      const highCount = catContacts.filter(c => (c.score ?? 0) > HIGH_PRIORITY_SCORE).length
+
       return {
         ...def,
         count,
+        highCount,
         weeklyGrowth,
         monthlyGrowth,
         convRate,
@@ -169,6 +181,12 @@ export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevM
 
                 <p className="text-[32px] font-[700] text-[#2A1F1A] leading-tight font-['Playfair_Display']">
                   {card.count.toLocaleString()}
+                </p>
+                <p className="mt-1 text-[11px] leading-snug text-[#7A6A60]">
+                  Overall leads
+                  {!card.noHigh && !(card.pending && card.count === 0) && (
+                    <> &middot; <span className="font-[600] text-[#BE4A3C]">{card.highCount}</span> high-priority (score &gt;{HIGH_PRIORITY_SCORE})</>
+                  )}
                 </p>
                 {card.pending && card.count === 0 && (
                   <p className="mt-1 text-[10px] leading-snug text-[#B9822E]">Not tracked in HubSpot yet — needs a &ldquo;{card.key}&rdquo; Lead Form Type on its form.</p>

@@ -64,7 +64,7 @@ function HubSpotMoMChart({ weekStart, title, actualLabel = 'Actual Leads', goalL
     async function fetchAll() {
       const promises = monthsConfig.map(async (m) => {
         try {
-          const res = await fetch(`/api/hubspot/mqls?start=${m.start}&end=${m.end}&mode=all`)
+          const res = await fetch(`/api/hubspot/mqls?start=${m.start}&end=${m.end}&mode=all&slim=1`)
           const data = await res.json()
           // Exclude Book a Demo forms, Agent Studio signups, and Webinar signups (bulk batches
           // that aren't comparable to an actual form fill — added 2026-09-28)

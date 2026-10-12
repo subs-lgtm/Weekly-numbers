@@ -58,7 +58,7 @@ export function AgentStudioWoWChart({ weekStart, title, actualLabel = 'Studio Le
       const promises = weekKeys.map(async (wk) => {
         const end = format(addWeeks(new Date(wk + 'T00:00:00'), 1), 'yyyy-MM-dd')
         try {
-          const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&mode=all`)
+          const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&mode=all&slim=1`)
           const data = await res.json()
           return { week: format(new Date(wk + 'T00:00:00'), 'MMM d'), [actualLabel]: data.by_form_type?.['Agent Studio'] || 0 }
         } catch {

@@ -486,3 +486,25 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     Nirupam pushed (Oct 7-9): Microsoft login, Firebase session cookie, and `src/proxy.ts` which now 401s every `/api/*` call without the
     `wnd_session` cookie or a Firebase bearer - so unauthenticated `curl` against prod APIs no longer works (earlier curl-based checks in this
     file predate it). Local preview now needs a throwaway `SESSION_SECRET` in `.env.local` plus a cookie signed with it (see `src/lib/session-cookie.ts`).
+37. **2026-10-12 — Executive breakdown panels + Leads "high-priority" secondary line (BUILT, NOT YET DEPLOYED).** Leadership request (Ani/Anirudh).
+    New route `/api/hubspot/executive-breakdown?months=3` (last 3 COMPLETED months, Firestore cache `executive_breakdown_cache_v1`, 1h TTL,
+    `nocache=1` bypasses) returns per month: SQLs by acquisition channel (`resolveChannel`) + HubSpot original source; Opportunity count/value,
+    by source, by current stage/group (`STAGE_INFO` in `src/lib/marketing-opportunities.ts`), stuck deals (open top/middle/stalled >30 days in stage);
+    SQL & Opportunity counts by use case. Cohort = same as Cohort Funnel Table (Book a Demo contacts created in month), so SQL/Opp totals tie to it
+    (Jul 58/12, Aug 19/2, Sep 14/3 as of 12 Oct; the "15" quoted in the meeting was a point-in-time number). UI: `MarketingBreakdownPanels.tsx`
+    (3 cards) wired into `executive/page.tsx` above Conversion Trends. Use-case keyword classifier extracted to `src/lib/use-case-themes.ts`
+    and shared with `MQLUseCases.tsx`. Leads page: `LeadCategoriesPerformance` headline stays OVERALL leads; new secondary line "N high-priority
+    (score >60)" per card (hidden for Events manual, Studio Users, untracked categories). Open: confirm GSI/GSA campaign naming with Ani.
+38. **2026-10-12 — Leads page slowness fixed (NOT YET DEPLOYED).** Root cause: `/api/hubspot/mqls` cache writes for `mode=all` always failed silently
+    (result had `undefined` fields -> Firestore rejects; months are 3MB, over the 1MiB doc limit), so the Leads page recomputed from HubSpot every load
+    (week 5-13s, month up to ~50s, x ~19 parallel calls from page + charts). Fix: cache stored gzip'd (`gz` Buffer; old `result` docs still readable),
+    stale-while-revalidate for current-period ranges (<24h stale served instantly, refreshed via `after()`), identical concurrent requests share one
+    HubSpot run, `slim=1` drops `contacts_by_priority` (trend charts + comparison cards use it; 3MB -> 5KB). Also `/api/cron/warm-cache` was 401'd by
+    the 7 Oct auth gate (its sub-requests had no bearer) - now sends CRON_SECRET, warms last 12 weeks + 7 months newest-first. Measured locally:
+    month 52s -> 1.7s, week 5.5s -> 0.3s on repeat.
+39. **2026-10-12 — "Conv. to MQL" on Lead Categories cards no longer counts HubSpot's auto-copied lifecycle stages (NOT YET DEPLOYED).** Playbook showed 35%
+    (19/54) but all 19 had Opportunity/Customer copied from their COMPANY at creation (history source `COMPANIES` / `LifecycleChangeToContactUpdate:
+    triggered by companyId=...`; no workflow does this - 139 workflows scanned). `/api/hubspot/mqls` now batch-reads lifecycle history for non-lead
+    contacts and returns `autoLifecycle` per contact (cache prefix `v9`); `getMqlsCount` ignores a lifecycle stage when the flag is set. Form-based rule
+    (Book a Demo / Email Form / Pre-Built Agents / GSI / Accenture / Partner Form = MQL) unchanged. Playbook 35% -> 0%, Studio Users 11% -> 0%.
+    Open: ask team how to treat auto-promoted contacts everywhere else (Executive funnel, MQL Lifecycle Status Funnel).

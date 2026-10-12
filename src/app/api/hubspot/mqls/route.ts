@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
+import { gzipSync, gunzipSync } from 'zlib'
 
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 
@@ -21,7 +22,13 @@ function getCacheDb() {
   } catch { cacheDb = null; return null }
 }
 
-async function getCached(start: string, end: string): Promise<any | null> {
+// Cache entries are gzip-compressed Buffers. Two separate bugs used to make every mode=all write fail silently
+// (so the Leads page was recomputed from HubSpot on every load, 10-50s per range): (1) the result carries
+// `undefined` fields (funnel.closed_won_count), which Firestore rejects, and (2) uncompressed month ranges are
+// 3MB+, over Firestore's 1MiB document limit. JSON round-trip drops the undefineds; gzip brings months to ~300KB.
+const STALE_MAX_MS = 24 * 3600 * 1000 // a current-period entry older than 1h is served instantly, then refreshed in the background
+
+async function getCachedEntry(start: string, end: string): Promise<{ result: any; ageMs: number; past: boolean } | null> {
   try {
     const db = getCacheDb()
     if (!db) return null
@@ -30,15 +37,9 @@ async function getCached(start: string, end: string): Promise<any | null> {
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
     const now = new Date()
-    const ageMs = now.getTime() - cachedAt.getTime()
-    // Past periods: cache for 7 days (data won't change for completed weeks)
-    if (new Date(end + 'T00:00:00Z') < now) {
-      if (ageMs < 604800000) return data.result // 7 day TTL for past periods
-      return null
-    }
-    // Current period: cache for 1 hour
-    if (ageMs < 3600000) return data.result
-    return null
+    const result = data.gz ? JSON.parse(gunzipSync(Buffer.from(data.gz)).toString('utf8')) : data.result
+    if (!result) return null
+    return { result, ageMs: now.getTime() - cachedAt.getTime(), past: new Date(end + 'T00:00:00Z') < now }
   } catch { return null }
 }
 
@@ -46,8 +47,9 @@ async function setCache(start: string, end: string, result: any): Promise<void> 
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('mql_cache').doc(`${start}_${end}`).set({ result, cachedAt: new Date(), start, end })
-  } catch {}
+    const gz = gzipSync(Buffer.from(JSON.stringify(result), 'utf8'))
+    await db.collection('mql_cache').doc(`${start}_${end}`).set({ gz, cachedAt: new Date(), start, end })
+  } catch (e: any) { console.error('[mqls] cache write failed', start, String(e?.message).slice(0, 200)) }
 }
 
 async function searchAll(
@@ -145,7 +147,36 @@ async function applyPriorityMemory(contacts: any[]): Promise<number> {
   }
 }
 
-export async function GET(req: NextRequest) {
+// HubSpot copies a company's lifecycle stage (Opportunity / Customer) onto contacts at that company the moment
+// they are created (history source = COMPANIES, "LifecycleChangeToContactUpdate: triggered by companyId") - no
+// person and no workflow moved them. Those contacts must not count as converted: 19 of 54 Playbook leads in the
+// week of 5 Oct showed as "35% converted to MQL" purely because of this. We flag a contact when the LATEST change to its
+// lifecycle stage is that automatic one (a later manual / workflow change clears the flag).
+async function flagAutoLifecycle(apiKey: string, contacts: any[]): Promise<Set<string>> {
+  const flagged = new Set<string>()
+  try {
+    const ids = contacts
+      .filter(c => !['', 'lead', 'subscriber', 'other'].includes(c.properties?.lifecyclestage || ''))
+      .map(c => String(c.id))
+      .slice(0, 600)
+    for (let i = 0; i < ids.length; i += 50) {
+      const res = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/batch/read`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertiesWithHistory: ['lifecyclestage'], properties: ['lifecyclestage'], inputs: ids.slice(i, i + 50).map(id => ({ id })) }),
+      })
+      if (!res.ok) { if (res.status === 429) await new Promise(r => setTimeout(r, 1100)); continue }
+      const data = await res.json()
+      for (const r of data.results || []) {
+        const latest = (r.propertiesWithHistory?.lifecyclestage || [])[0]
+        if (latest?.sourceType === 'COMPANIES' && String(latest?.sourceId || '').startsWith('LifecycleChangeToContactUpdate')) flagged.add(String(r.id))
+      }
+    }
+  } catch (e) { console.warn('[mqls] auto-lifecycle check skipped:', (e as Error).message) }
+  return flagged
+}
+
+async function computeGET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const start = searchParams.get('start')
   const end = searchParams.get('end')
@@ -167,15 +198,9 @@ export async function GET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v8_all' : 'v8'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v9_all' : 'v9'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
-    if (!noCache) {
-      const cached = await getCached(`${cacheKeyPrefix}_${start}`, end)
-      if (cached) {
-        return NextResponse.json(cached)
-      }
-    }
 
     const startMs = new Date(start + 'T00:00:00.000Z').getTime()
     const endMs = new Date(end + 'T00:00:00.000Z').getTime()
@@ -427,6 +452,7 @@ export async function GET(req: NextRequest) {
     let statusAssociatedWithDeal = 0
 
     await applyPriorityMemory(contacts)
+    const autoLifecycleIds = await flagAutoLifecycle(apiKey, contacts)
 
     for (const c of contacts) {
       const props = c.properties || {}
@@ -466,6 +492,7 @@ export async function GET(req: NextRequest) {
         platformTools: (props.platform_tools || props.which_platforms_or_tools_are_you_currently_using_or_evaluating || '').trim(),
         campaign: (props.lead_campaign_name || '').trim(),
         webinarExcluded: false as boolean,
+        autoLifecycle: autoLifecycleIds.has(String(c.id)),
         leadSource: (props.lead_source || '').trim(),
         // Interaction summary for the Priority Details hover - Book a Demo leads only, to keep the Leads page payload small.
         interaction: (props.lead_form_type || '').includes('Book a Demo') ? {
@@ -836,4 +863,56 @@ export async function GET(req: NextRequest) {
     console.error('[hubspot/mqls]', err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
+}
+
+// Cache layer around computeGET:
+//   fresh (past range <7d, current range <1h) -> instant
+//   stale current-period entry (<24h)          -> served instantly, recomputed in the background via after()
+//   miss                                       -> compute once; identical concurrent requests share one HubSpot run
+// `slim=1` drops contacts_by_priority (3MB for a month) for callers that only need counts (trend charts).
+const inflight = new Map<string, Promise<any>>()
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const start = searchParams.get('start')
+  const end = searchParams.get('end')
+  if (!start || !end) return computeGET(req)
+  const mode = searchParams.get('mode')
+  const noCache = searchParams.get('nocache') === '1'
+  const slim = searchParams.get('slim') === '1'
+  const includePipeline = searchParams.get('includePipeline') === '1'
+  const includeClosedWon = searchParams.get('includeClosedWon') === '1'
+  const prefix = `${mode === 'all' ? 'v9_all' : 'v9'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const out = (r: any) => {
+    if (!slim) return NextResponse.json(r)
+    const { contacts_by_priority, ...rest } = r
+    return NextResponse.json(rest)
+  }
+  const run = async (): Promise<any> => {
+    const res = await computeGET(req)
+    return res.ok ? await res.json() : { __error: await res.text(), __status: res.status }
+  }
+
+  if (!noCache) {
+    const hit = await getCachedEntry(`${prefix}_${start}`, end)
+    if (hit) {
+      if (hit.past ? hit.ageMs < 604800000 : hit.ageMs < 3600000) return out(hit.result)
+      if (!hit.past && hit.ageMs < STALE_MAX_MS) {
+        const key = `${prefix}_${start}_${end}`
+        if (!inflight.has(key)) {
+          const p = run().finally(() => inflight.delete(key))
+          inflight.set(key, p)
+          after(async () => { await p })
+        }
+        return out(hit.result)
+      }
+    }
+  }
+
+  const key = `${prefix}_${start}_${end}${noCache ? '_nc' : ''}`
+  let p = inflight.get(key)
+  if (!p) { p = run().finally(() => inflight.delete(key)); inflight.set(key, p) }
+  const r = await p
+  if (r.__error !== undefined) return new NextResponse(r.__error, { status: r.__status, headers: { 'content-type': 'application/json' } })
+  return out(r)
 }

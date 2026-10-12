@@ -13,6 +13,7 @@ import { OpportunityCohortOutcomeChart } from '@/components/executive/Opportunit
 import { ConversionTrendCharts } from '@/components/executive/ConversionTrendCharts'
 import { PredictiveFunnelTable, type ProjectionCohort, type ProjectionBaseline } from '@/components/executive/PredictiveFunnelTable'
 import { PriorityMixTable, type PriorityMonthRow } from '@/components/executive/PriorityMixTable'
+import { SQLSourceBreakdown, OpportunityPipelinePanel, UseCaseBreakdown, type BreakdownResponse } from '@/components/executive/MarketingBreakdownPanels'
 
 export default function ExecutiveDashboardPage() {
   const { queryEnd, range } = useWeek()
@@ -57,6 +58,8 @@ export default function ExecutiveDashboardPage() {
 
   const [priorityRows, setPriorityRows] = useState<PriorityMonthRow[]>([])
   const [priorityLoading, setPriorityLoading] = useState(true)
+  const [breakdown, setBreakdown] = useState<BreakdownResponse | null>(null)
+  const [breakdownLoading, setBreakdownLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -107,6 +110,17 @@ export default function ExecutiveDashboardPage() {
       .finally(() => { if (!cancelled) setCohortsLoading(false) })
     return () => { cancelled = true }
   }, [cohortMonths])
+
+  useEffect(() => {
+    let cancelled = false
+    setBreakdownLoading(true)
+    fetch('/api/hubspot/executive-breakdown?months=3')
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setBreakdown(d.months ? d : null) })
+      .catch(() => { if (!cancelled) setBreakdown(null) })
+      .finally(() => { if (!cancelled) setBreakdownLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -204,6 +218,13 @@ export default function ExecutiveDashboardPage() {
         {/* Lead Priority Mix */}
         <section className="space-y-3">
           <PriorityMixTable rows={priorityRows} loading={priorityLoading} />
+        </section>
+
+        {/* SQL source, opportunity pipeline and use-case breakdowns (last 3 completed months) */}
+        <section className="space-y-3">
+          <SQLSourceBreakdown data={breakdown} loading={breakdownLoading} />
+          <OpportunityPipelinePanel data={breakdown} loading={breakdownLoading} />
+          <UseCaseBreakdown data={breakdown} loading={breakdownLoading} />
         </section>
 
         {/* Row 5 — Conversion Trends */}

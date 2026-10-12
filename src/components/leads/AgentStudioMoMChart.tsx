@@ -60,7 +60,7 @@ export function AgentStudioMoMChart({ weekStart, title, actualLabel = 'Studio Le
     async function fetchAll() {
       const promises = monthsConfig.map(async (m) => {
         try {
-          const res = await fetch(`/api/hubspot/mqls?start=${m.start}&end=${m.end}&mode=all`)
+          const res = await fetch(`/api/hubspot/mqls?start=${m.start}&end=${m.end}&mode=all&slim=1`)
           const data = await res.json()
           return { month: m.label, [actualLabel]: data.by_form_type?.['Agent Studio'] || 0 }
         } catch {

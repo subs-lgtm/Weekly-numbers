@@ -62,7 +62,7 @@ function HubSpotWoWChart({ weekStart, title, actualLabel = 'Actual Leads', goalL
       const promises = weekKeys.map(async (wk) => {
         const end = format(addWeeks(new Date(wk + 'T00:00:00'), 1), 'yyyy-MM-dd')
         try {
-          const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&mode=all`)
+          const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&mode=all&slim=1`)
           const data = await res.json()
           // Exclude Book a Demo forms, Agent Studio signups, and Webinar signups (bulk batches
           // that aren't comparable to an actual form fill — added 2026-09-28)

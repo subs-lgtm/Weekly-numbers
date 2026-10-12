@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { format, startOfWeek, addWeeks, isBefore } from 'date-fns'
+import { format, startOfWeek, addWeeks } from 'date-fns'
 
 export const maxDuration = 300
 
 /**
- * Daily cron: warms the MQL cache for all weeks from April 1 to current week.
- * Past weeks are cached for 24h in Firestore, current week for 1h.
- * This ensures any custom date range query is instant (just sums cached weeks).
+ * Daily cron: warms the MQL cache (Firestore mql_cache) for the recent weeks and months the Leads page loads.
+ * Past ranges stay fresh 7 days; current-period entries are served stale and refreshed in the background.
  * 
  * Schedule: daily at 6am UTC via Vercel cron
  */
@@ -18,42 +17,40 @@ export async function GET(req: NextRequest) {
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_URL || `https://${req.headers.get('host')}`
-  const startDate = new Date('2026-04-01')
+  // Since the 7 Oct auth gate (src/proxy.ts) every /api/* call needs credentials; the cron's own sub-requests
+  // were being 401'd, so nothing was actually warmed. CRON_SECRET bearer is accepted by the gate.
+  const headers: Record<string, string> = cronSecret ? { authorization: `Bearer ${cronSecret}` } : {}
   const today = new Date()
 
-  // Generate all Monday-start weeks
-  let cursor = startOfWeek(startDate, { weekStartsOn: 1 })
-  const weeks: { start: string; end: string }[] = []
-
-  while (isBefore(cursor, today)) {
-    const start = format(cursor, 'yyyy-MM-dd')
-    const end = format(addWeeks(cursor, 1), 'yyyy-MM-dd')
-    weeks.push({ start, end })
-    cursor = addWeeks(cursor, 1)
+  // Ranges the Leads page asks for: the last 12 Monday-start weeks and the last 7 calendar months (mode=all),
+  // plus the weeks in default MQL mode. Newest first so the ranges people look at are warm even if the run is cut off.
+  const ranges: { start: string; end: string; mode: '' | '&mode=all' }[] = []
+  const thisMonday = startOfWeek(today, { weekStartsOn: 1 })
+  for (let i = 0; i < 12; i++) {
+    const s = addWeeks(thisMonday, -i)
+    const e = addWeeks(s, 1)
+    const r = { start: format(s, 'yyyy-MM-dd'), end: format(e, 'yyyy-MM-dd') }
+    ranges.push({ ...r, mode: '&mode=all' }, { ...r, mode: '' })
+  }
+  for (let i = 0; i < 7; i++) {
+    const s = new Date(today.getFullYear(), today.getMonth() - i, 1)
+    const e = new Date(today.getFullYear(), today.getMonth() - i + 1, 1)
+    ranges.push({ start: format(s, 'yyyy-MM-dd'), end: format(e, 'yyyy-MM-dd'), mode: '&mode=all' })
   }
 
   let warmed = 0
   let errors = 0
-
-  for (const { start, end } of weeks) {
-    try {
-      // Warm MQLs cache
-      await fetch(`${baseUrl}/api/hubspot/mqls?start=${start}&end=${end}`)
-      // Warm All Leads cache
-      await fetch(`${baseUrl}/api/hubspot/mqls?start=${start}&end=${end}&mode=all`)
-      warmed++
-    } catch {
-      errors++
+  const CONCURRENCY = 3
+  let next = 0
+  await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+    while (next < ranges.length) {
+      const { start, end, mode } = ranges[next++]
+      try {
+        const r = await fetch(`${baseUrl}/api/hubspot/mqls?start=${start}&end=${end}${mode}&slim=1`, { headers })
+        if (r.ok) warmed++; else errors++
+      } catch { errors++ }
     }
-    // Small delay between requests
-    await new Promise(r => setTimeout(r, 200))
-  }
+  }))
 
-  return NextResponse.json({
-    success: true,
-    weeks: weeks.length,
-    warmed,
-    errors,
-    range: `${weeks[0]?.start} → ${weeks[weeks.length - 1]?.end}`,
-  })
+  return NextResponse.json({ success: true, ranges: ranges.length, warmed, errors })
 }
