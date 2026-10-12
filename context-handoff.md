@@ -513,3 +513,32 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     Korcomptenz, David Vergin / oXya, Rajesh Marar / CloudArmee). `/api/hubspot/mqls` (mode=all only) now finds Partner-Form contacts created BEFORE the window
     and modified inside it, reads `lead_form_type` property history, and counts those whose Partner Form tag was ADDED inside the window into
     `by_form_type_contains['Partner Form']` (also returned as `partner_retagged`). Other categories unchanged. Cache prefix `v10`. Past months rise too (Sep: 34 -> 50).
+41. **2026-10-12 — Summary "Organic Traffic" card wired to GA4.** It only read the Firestore `seo/organic_traffic` weekly entry (nobody fills it), so it showed "—".
+    `useSummaryData()` in `src/app/(app)/page.tsx` now also calls `/api/summary-metrics` (GA4 sessions, "Organic Search" channel group) for the selected and
+    previous period; a value typed by hand into SEO still wins (manualKeys). Week of 5 Oct = 2,469 (prev 2,400). NOTE: `src/app/api/summary-metrics/route.ts`
+    has a service-account private key + Google Ads developer token HARDCODED in source (committed to git) - should move to env vars and rotate. Also the Summary
+    page calls /api/hubspot/mqls with `nocache=1` x4 and holds the whole grid on a spinner until all return (slow); dropping nocache would make it fast but up to 1h stale.
+42. **2026-10-12 — Pre-Signup Website Journey panel (MQLs page, under Channel-wise Breakdown), GA4 only (BUILT, deploy pending).** `/api/ga4/presignup-journey?start&end`
+    (service account from env SA_CLIENT_EMAIL/SA_PRIVATE_KEY, 30-min in-memory cache) + `src/components/mql/PreSignupJourney.tsx`. Tabs Organic Search / Direct / Google Ads
+    (Paid Search + Cross-network). Shows sessions, demo sign-ups (sessions firing key event `Sign_up_for_demo` or `book_demo_popup_submit`; = sessions x (rate1+rate2),
+    approximate), pages/session, landing pages, "content seen in sessions that signed up" (>=2 sign-ups, lift vs channel baseline), most-viewed pages, and a coverage line
+    vs HubSpot MQLs of the channel. FINDINGS: GA4 under-records ad sign-ups (Google Ads wk 28 Sep: GA4 5 vs HubSpot 28 = 18%); HubSpot first/last URL for Book a Demo
+    contacts is nearly always the demo page itself (/lyzr/demo, /book-demo) and ~2 page views, so it can't show pre-signup content. True per-person paths need PostHog
+    (no key available to Claude yet - needs POSTHOG personal API key + project id + region, and email identify on the demo form).
+43. **2026-10-12 — MQLs page: Meeting Booked hover + meetings-based Demo Booked / Demo Completed (BUILT, deploy pending).** (a) Meeting Booked card (Total MQL Summary) shows a hover list:
+    company, person, use case (same keyword classifier as MQL Use Cases) per lead with a meeting. (b) MQL - Lead Status Funnel rows Demo Booked / Demo Completed no longer use hs_lead_status:
+    `/api/hubspot/mqls` (MQL mode only, cache `v11`) returns `meetings_funnel` built from the HubSpot MEETINGS object (contacts->meetings associations; outcome COMPLETED /
+    NO_SHOW / CANCELED+RESCHEDULED / SCHEDULED; start time). Demo Booked = leads with a meeting (ties to Meeting Booked card: 4 for 5-11 Oct); Demo Completed = a meeting with
+    outcome COMPLETED (0 now - the 4 past meetings are still "Scheduled", outcome never set; the hover footer says so). Hover per row shows company, use case, status and the
+    LATEST SDR NOTE: meeting internal notes if any, else the latest Note record on the contact written by a person (owner set; automated "Website chat with Leia" notes ignored).
+    Meeting body is only the Teams invite so it is not used. Falls back to lead-status numbers if meetings data is unavailable. Plumbing: MQLHubSpotData onData -> mqls/page.tsx -> enrichedData['meetings_funnel'].
+44. **2026-10-12 — Summary page "Meetings Booked" card hover.** The first hover (item 43) was only on the MQLs page's "Meeting Booked" card; the Summary page has its own key-number card
+    (`SummaryMetrics` in `src/app/(app)/page.tsx`). It now shows the same list (company, use case, meeting status, latest SDR note) from `meetings_funnel.details` of the
+    already-fetched /api/hubspot/mqls response (`SummaryMeetingsPopover` exported from MQLScoreCards.tsx). Two separate cards exist - keep both in sync.
+45. **2026-10-12 — Demo Completed logic corrected (meetings-based).** AUDIT: SDRs essentially never set `hs_meeting_outcome` (Sep 2026 cohort: 131 meetings across 80 leads - 0 COMPLETED, 56 SCHEDULED
+    in the past, 38 blank in the past, 21 future, 13 CANCELED, 3 RESCHEDULED), so "outcome = COMPLETED" gave 0. `fetchMeetingDetails` now classifies each meeting: COMPLETED -> completed; NO_SHOW -> no_show;
+    CANCELED/RESCHEDULED -> canceled; else start time passed -> HELD (demo took place, outcome not set); else upcoming. Contact status = completed > held > no_show > upcoming > canceled-only.
+    Demo Completed = completed + held. `meetings_funnel` = {booked, completed, completed_confirmed, held_unconfirmed, no_show, upcoming, canceled_only, details}; cache `v12`. Funnel source split ("Sources: x Ads . y Website")
+    under Demo Booked/Completed now computed from the same meetings population (was wrongly from hs_lead_status). Same logic for any week / month / custom range (API takes start/end).
+    Known overcount: no-shows are not recorded as outcomes either, so HELD includes no-shows (lead status flags ~12 of Sep's meeting leads as Intro Call No-Show / Demo no show).
+    Sep: MQL 262, booked 80, completed 66 (0 confirmed), canceled-only 13, upcoming 1. Aug: 279 / 116 / 100 (1 confirmed). Week 5-11 Oct: 51 / 4 / 4.

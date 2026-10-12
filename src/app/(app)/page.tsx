@@ -16,6 +16,7 @@ import { Loader2, TrendingUp, TrendingDown, Minus, Pencil, Check, X } from "luci
 import { HighPriorityLeads } from "@/components/summary/HighPriorityLeads";
 import { OKRSection } from "@/components/summary/OKRSection";
 import { ActivitySummaryTable } from "@/components/summary/ActivitySummaryTable";
+import { SummaryMeetingsPopover, type MeetingRow } from "@/components/mql/MQLScoreCards";
 
 // Key metrics pulled from across all sections
 const SUMMARY_METRICS: { section: string; key: string; label: string; prefix?: string; isManual?: boolean; isGSI?: boolean }[] = [
@@ -42,6 +43,8 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
   const [data, setData] = useState<Record<string, string>>({})
   const [prevData, setPrevData] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+  // Leads behind the Meetings Booked card (company, use case, status, SDR note) - for its hover list
+  const [meetings, setMeetings] = useState<{ rows: MeetingRow[]; awaiting: number; noShow: number } | null>(null)
   // Track keys that have been manually saved to Firestore — API must not overwrite these
   const manualKeys = useRef<Set<string>>(new Set())
   // Track keys that have been manually saved for the previous week
@@ -70,6 +73,8 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
       fetch(`/api/hubspot/gsi-leads?start=${prevWeek}&end=${prevWeekEnd}`).then(r => r.json()).catch(() => null),
     ]).then(([curr, prev, allCurr, allPrev, gsi, prevGsi]) => {
       if (curr && !curr.error) {
+        const mf = curr.meetings_funnel
+        setMeetings(mf ? { rows: mf.details || [], awaiting: mf.held_unconfirmed || 0, noShow: mf.no_show || 0 } : null)
         setData(d => ({
           ...d,
           'mqls:mqls_total': String(curr.total || 0),
@@ -124,6 +129,23 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
       setLoading(false)
     })
 
+    // Organic Traffic = GA4 sessions in the "Organic Search" default channel group for the selected period and the
+    // previous one (/api/summary-metrics). It used to read only the Firestore weekly entry, which nobody fills in, so
+    // the card showed "—". A value typed by hand into SEO still wins (same manual-override rule as the other cards).
+    let organicCancelled = false
+    Promise.all([
+      fetch(`/api/summary-metrics?start=${start}&end=${end}`).then(r => r.json()).catch(() => null),
+      fetch(`/api/summary-metrics?start=${prevWeek}&end=${prevWeekEnd}`).then(r => r.json()).catch(() => null),
+    ]).then(([cur, prv]) => {
+      if (organicCancelled) return
+      if (cur && typeof cur.organicTraffic === 'number' && !manualKeys.current.has('seo:organic_traffic')) {
+        setData(d => ({ ...d, 'seo:organic_traffic': String(cur.organicTraffic) }))
+      }
+      if (prv && typeof prv.organicTraffic === 'number' && !prevManualKeys.current.has('seo:organic_traffic')) {
+        setPrevData(d => ({ ...d, 'seo:organic_traffic': String(prv.organicTraffic) }))
+      }
+    })
+
     // Also fetch from Firestore for other sections + manual overrides
     const db = getDb()
     let loaded = 0
@@ -172,10 +194,10 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
       }))
     }
 
-    return () => unsubs.forEach(u => u())
+    return () => { organicCancelled = true; unsubs.forEach(u => u()) }
   }, [weekStart, queryStart, queryEnd])
 
-  return { data, prevData, loading }
+  return { data, prevData, loading, meetings }
 }
 
 // ── ManualEditCard — click pencil to inline-edit, saves to Firestore ──────────
@@ -305,7 +327,7 @@ function ManualEditCard({
 }
 
 function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string; queryStart?: string; queryEnd?: string }) {
-  const { data, prevData, loading } = useSummaryData(weekStart, queryStart, queryEnd)
+  const { data, prevData, loading, meetings } = useSummaryData(weekStart, queryStart, queryEnd)
 
   if (loading) return (
     <div>
@@ -396,10 +418,12 @@ function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string
             )
           }
 
+          const isMeetings = m.key === 'meeting_booked' && !!meetings && meetings.rows.length > 0
           return (
             <div
               key={`${m.section}:${m.key}`}
-              className="rounded-[16px] bg-white border border-[#D4CBC0] p-4 shadow-[0_4px_20px_rgba(40,20,10,.07)]"
+              className={`rounded-[16px] bg-white border border-[#D4CBC0] p-4 shadow-[0_4px_20px_rgba(40,20,10,.07)]${isMeetings ? ' relative group/mtg hover:z-40 focus-within:z-40' : ''}`}
+              tabIndex={isMeetings ? 0 : undefined}
             >
               <p className="eyebrow mb-1.5">{m.label}</p>
               <p className="text-[1.5rem] font-[500] text-[#2A1F1A] tabular-nums leading-tight">
@@ -421,6 +445,16 @@ function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string
                   <span className="text-[11px] text-[#7A6A60]">prev: {m.prefix || ''}{p.toLocaleString()}</span>
                 )}
               </div>
+              {isMeetings && meetings && (
+                <>
+                  <p className="mt-1.5 text-[10px] text-[#2563EB] underline decoration-dotted underline-offset-2">hover to see who</p>
+                  <SummaryMeetingsPopover
+                    rows={meetings.rows}
+                    title="Meetings booked - company, use case and latest SDR note"
+                    footer={meetings.awaiting > 0 ? `${meetings.awaiting} meeting${meetings.awaiting === 1 ? ' has' : 's have'} taken place but the outcome is not set in HubSpot.` : undefined}
+                  />
+                </>
+              )}
             </div>
           )
         })}

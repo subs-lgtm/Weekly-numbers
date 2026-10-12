@@ -73,6 +73,7 @@ type Props = {
     lifecycle_stage_funnel: HubSpotMQLData['lifecycle_stage_funnel']
     lead_status_funnel: HubSpotMQLData['lead_status_funnel']
     contacts_by_priority: HubSpotMQLData['contacts_by_priority']
+    meetings_funnel?: any
     by_source_category: Record<string, number>
     by_source_funnel: HubSpotMQLData['by_source_funnel']
   }) => void
@@ -155,6 +156,7 @@ export function MQLHubSpotData({ weekStart, queryStart, queryEnd, onData, includ
         lifecycle_stage_funnel: json.lifecycle_stage_funnel,
         lead_status_funnel: json.lead_status_funnel,
         contacts_by_priority: json.contacts_by_priority,
+        meetings_funnel: json.meetings_funnel,
         by_source_category: json.by_source_category || {},
         by_source_funnel: json.by_source_funnel,
       })

@@ -16,6 +16,7 @@ import { MQLPriorityTrendChart } from '@/components/mql/MQLPriorityTrendChart'
 import { MQLHubSpotData } from '@/components/mql/MQLHubSpotData'
 import { OpportunityACVChart } from '@/components/mql/OpportunityACVChart'
 import { ChannelBreakdownGrid } from '@/components/mql/ChannelBreakdownGrid'
+import { PreSignupJourney } from '@/components/mql/PreSignupJourney'
 import { MQLJourneyFunnel } from '@/components/mql/MQLJourneyFunnel'
 import { PriorityAnalysis } from '@/components/mql/PriorityAnalysis'
 import { PriorityDetailsTable } from '@/components/mql/PriorityDetailsTable'
@@ -56,6 +57,7 @@ function MQLPageInner() {
     lifecycle_stage_funnel?: { total: number; mql_plus: number; sql_plus: number; opportunity_plus: number; customer: number }
     lead_status_funnel?: { total: number; working_plus: number; demo_booked_plus: number; demo_completed_plus: number; associated_with_deal: number }
     contacts_by_priority?: ContactsByPriority
+    meetings_funnel?: any
     by_source_category?: Record<string, number>
     by_source_funnel?: Record<string, { total: number; mql: number; sql: number; opportunity: number; customer: number; working: number; pipelineValue: number }>
   } | null>(null)
@@ -89,6 +91,9 @@ function MQLPageInner() {
     }
     return list
   }, [hubspotData])
+
+  // Leads whose HubSpot record has a meeting (hs_latest_meeting_activity) - same population as the Meeting Booked count.
+  const meetingContacts = useMemo(() => allContacts.filter(c => c.interaction?.latestMeeting), [allContacts])
 
   const handleHubSpotData = useCallback((d: typeof hubspotData) => {
     setHubspotData(d)
@@ -246,6 +251,12 @@ function MQLPageInner() {
         updatedBy: 'hubspot',
         updatedAt: null,
       }
+      d['meetings_funnel'] = {
+        value: JSON.stringify(hubspotData.meetings_funnel || null),
+        notes: 'Live from HubSpot (Meetings object)',
+        updatedBy: 'hubspot',
+        updatedAt: null,
+      }
       d['lead_status_stage_breakdown'] = {
         value: JSON.stringify(hubspotData.lead_status_stage_breakdown || {}),
         notes: 'Per-lead-status working/ads/website breakdown',
@@ -381,6 +392,7 @@ function MQLPageInner() {
           <TotalMQLSummaryCards
             data={enrichedData}
             prevData={enrichedPrevData}
+            meetingContacts={meetingContacts}
           />
 
           {/* 2. TREND CHARTS */}
@@ -400,6 +412,9 @@ function MQLPageInner() {
           {hubspotData?.by_source_category && (
             <ChannelBreakdownGrid bySourceCategory={hubspotData.by_source_category} total={hubspotData.total} />
           )}
+
+          {/* 3b. WHAT VISITORS DO ON THE SITE BEFORE SIGNING UP (GA4) — Organic / Direct / Google Ads */}
+          <PreSignupJourney start={effectiveStart} end={effectiveEnd} hubspotByChannel={hubspotData?.by_source_category} />
 
           {/* 4. MQL QUALIFICATION FUNNELS — split into two independent, single-dimension
               tables (2026-09-07) so a contact's raw hs_lead_status and their lifecyclestage

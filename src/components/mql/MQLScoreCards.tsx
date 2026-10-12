@@ -6,12 +6,20 @@ import { cn } from '@/lib/utils'
 import type { WeekMetrics } from '@/hooks/useWeeklyMetrics'
 import { getDb } from '@/lib/firebase'
 import { doc, getDoc } from 'firebase/firestore'
+import { extractUseCase, classifyUseCase } from '@/lib/use-case-themes'
 
 type Props = {
   data: WeekMetrics
   prevData: WeekMetrics
   /** Month-to-date total MQLs (live from HubSpot, calendar month up to today) */
   monthToDateTotal?: number | null
+  /** Leads with a meeting booked in the selected period — shown in the Meeting Booked card's hover list. */
+  meetingContacts?: MeetingContact[]
+}
+
+export type MeetingContact = {
+  id: string; name?: string; company?: string; jobTitle?: string; message?: string; platformTools?: string
+  owner?: string; interaction?: { latestMeeting?: string | null } | null
 }
 
 function formatValue(value: string, unit: 'number' | 'percent'): string {
@@ -126,13 +134,20 @@ function QualifiedMQLsCard({ value, prevValue, totalMqls }: { value: string; pre
   )
 }
 
-function MeetingBookedCard({ value, prevValue }: { value: string; prevValue: string }) {
+function fmtMeetingDate(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function MeetingBookedCard({ value, prevValue, contacts }: { value: string; prevValue: string; contacts: MeetingContact[] }) {
   const delta = getDelta(value, prevValue)
   const hasValue = value !== '' && value !== undefined
   const total = parseFloat(value) || 0
+  const rows = [...contacts].sort((a, b) => (b.interaction?.latestMeeting || '').localeCompare(a.interaction?.latestMeeting || ''))
 
   return (
-    <div className={CARD_CLS}>
+    <div className={cn(CARD_CLS, 'hover:z-40 focus-within:z-40')} tabIndex={0}>
       <div className="inline-flex items-center justify-center rounded-full p-2 mb-3" style={{ background: 'rgba(37,99,235,.08)', color: '#2563EB' }}>
         <CalendarCheck className="h-4 w-4" />
       </div>
@@ -142,6 +157,41 @@ function MeetingBookedCard({ value, prevValue }: { value: string; prevValue: str
       </p>
       <DeltaPill delta={delta} suffix="WoW" />
       {prevValue && <p className="caption mt-1">prev {prevValue}</p>}
+      {rows.length > 0 && (
+        <p className="caption mt-1.5 text-[#2563EB] underline decoration-dotted underline-offset-2">hover for companies</p>
+      )}
+
+      {/* Hover list — company + use case for each booked meeting. pt-2 (not margin) keeps the hover bridge unbroken. */}
+      {rows.length > 0 && (
+        <div className="hidden group-hover:block group-focus-within:block absolute right-0 top-full z-50 pt-2 w-[380px] max-w-[85vw]">
+          <div className="rounded-[14px] border border-[#D4CBC0] bg-white shadow-[0_12px_32px_rgba(40,20,10,.18)] p-3 text-left max-h-[340px] overflow-y-auto">
+            <p className="text-[10.5px] uppercase tracking-[.06em] text-[#7A6A60] font-[600] mb-2">Meetings booked — company &amp; use case</p>
+            <ul className="space-y-2.5">
+              {rows.map(c => {
+                const uc = extractUseCase({ message: c.message, platformTools: c.platformTools })
+                const theme = classifyUseCase(uc.text)
+                const snippet = uc.text.replace(/\s+/g, ' ').slice(0, 140)
+                const when = fmtMeetingDate(c.interaction?.latestMeeting)
+                return (
+                  <li key={c.id} className="border-b border-[#EEE7DC] last:border-0 pb-2 last:pb-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">{c.company && c.company !== '—' ? c.company : '(no company)'}</span>
+                      {when && <span className="text-[11px] text-[#7A6A60] shrink-0">{when}</span>}
+                    </div>
+                    <p className="text-[11.5px] text-[#7A6A60] truncate">
+                      {[c.name && c.name !== '—' ? c.name : '', c.jobTitle && c.jobTitle !== '—' ? c.jobTitle : ''].filter(Boolean).join(' · ')}
+                    </p>
+                    <div className="mt-1 flex items-start gap-1.5">
+                      <span className="shrink-0 rounded-full px-2 py-[1px] text-[10.5px] font-[600] text-white" style={{ background: theme.color }}>{theme.label}</span>
+                      {snippet && theme.key !== 'none' && <span className="text-[11.5px] leading-snug text-[#2A1F1A]">{snippet}{uc.text.length > 140 ? '…' : ''}</span>}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -167,7 +217,7 @@ function MQLToDemoRateCard({ value, prevValue }: { value: string; prevValue: str
 }
 
 /** Total MQL Summary — 5 cards in priority order, matches spec requirements. */
-export function TotalMQLSummaryCards({ data, prevData }: Props) {
+export function TotalMQLSummaryCards({ data, prevData, meetingContacts = [] }: Props) {
   const [weeklyGoal, setWeeklyGoal] = useState<number>(100)
 
   // Load weekly MQL goal from Firestore
@@ -191,7 +241,7 @@ export function TotalMQLSummaryCards({ data, prevData }: Props) {
       <WeeklyMQLsCard value={data['mqls_total']?.value ?? ''} prevValue={prevData['mqls_total']?.value ?? ''} />
       <GoalVsActualCard value={data['mqls_total']?.value ?? ''} goal={weeklyGoal} />
       <QualifiedMQLsCard value={data['mqls_qualified']?.value ?? ''} prevValue={prevData['mqls_qualified']?.value ?? ''} totalMqls={data['mqls_total']?.value ?? ''} />
-      <MeetingBookedCard value={data['meeting_booked']?.value ?? ''} prevValue={prevData['meeting_booked']?.value ?? ''} />
+      <MeetingBookedCard value={data['meeting_booked']?.value ?? ''} prevValue={prevData['meeting_booked']?.value ?? ''} contacts={meetingContacts} />
       <MQLToDemoRateCard value={data['mql_to_demo_rate']?.value ?? ''} prevValue={prevData['mql_to_demo_rate']?.value ?? ''} />
     </div>
   )
@@ -269,7 +319,85 @@ export function OtherMQLMetrics({ data, prevData, monthToDateTotal, prevMonthToD
    MQLLifecycleStatusFunnel below are the two exported entry points.
    ========================================================================= */
 
-type FunnelStage = { label: string; value: number; color: string; breakdownKey: string; ofLabel?: string; ofBase?: number }
+export type MeetingRow = {
+  ads?: boolean
+  id: string; name?: string; company?: string; jobTitle?: string; message?: string; platformTools?: string
+  status: 'completed' | 'held' | 'no_show' | 'upcoming' | 'canceled'; meetingAt?: string | null
+  title?: string; notes?: string; noteBy?: string; noteAt?: string | null; outcome?: string
+}
+type FunnelStage = {
+  label: string; value: number; color: string; breakdownKey: string; ofLabel?: string; ofBase?: number
+  /** Hover list (Demo Booked / Demo Completed - built from HubSpot Meetings) */
+  hoverRows?: MeetingRow[]; hoverTitle?: string; hoverFooter?: string
+}
+
+const MEETING_STATUS_LABEL: Record<MeetingRow['status'], { label: string; cls: string }> = {
+  completed: { label: 'Completed (confirmed)', cls: 'bg-[#E6F3EA] text-[#2F6A45]' },
+  no_show: { label: 'No-show', cls: 'bg-[#FBE9E6] text-[#A33A2E]' },
+  held: { label: 'Held - outcome not set in HubSpot', cls: 'bg-[#FBF1E4] text-[#8A5A14]' },
+  upcoming: { label: 'Upcoming', cls: 'bg-[#E8EEF8] text-[#2D4C86]' },
+  canceled: { label: 'Cancelled / rescheduled', cls: 'bg-[#EEE7DC] text-[#7A6A60]' },
+}
+
+function MeetingHoverList({ rows, title, footer }: { rows: MeetingRow[]; title: string; footer?: string }) {
+  return (
+    <div className="hidden group-hover/stage:block group-focus-within/stage:block absolute left-0 sm:left-[140px] top-full z-50 pt-1 w-[440px] max-w-[88vw]">
+      <MeetingListBody rows={rows} title={title} footer={footer} />
+    </div>
+  )
+}
+
+/** Same list, positioned for the Summary page's Meetings Booked card (named group `mtg`). */
+export function SummaryMeetingsPopover({ rows, title, footer }: { rows: MeetingRow[]; title: string; footer?: string }) {
+  return (
+    <div className="hidden group-hover/mtg:block group-focus-within/mtg:block absolute left-0 top-full z-50 pt-1 w-[440px] max-w-[88vw]">
+      <MeetingListBody rows={rows} title={title} footer={footer} />
+    </div>
+  )
+}
+
+function MeetingListBody({ rows, title, footer }: { rows: MeetingRow[]; title: string; footer?: string }) {
+  return (
+    <>
+      <div className="rounded-[14px] border border-[#D4CBC0] bg-white shadow-[0_12px_32px_rgba(40,20,10,.18)] p-3 text-left max-h-[360px] overflow-y-auto">
+        <p className="text-[10.5px] uppercase tracking-[.06em] text-[#7A6A60] font-[600] mb-2">{title}</p>
+        {rows.length === 0 ? <p className="text-[12px] text-[#7A6A60]">None in this period.</p> : (
+          <ul className="space-y-3">
+            {rows.map(c => {
+              const uc = extractUseCase({ message: c.message, platformTools: c.platformTools })
+              const theme = classifyUseCase(uc.text)
+              const snippet = uc.text.replace(/\s+/g, ' ').slice(0, 140)
+              const st = MEETING_STATUS_LABEL[c.status]
+              const when = fmtMeetingDate(c.meetingAt)
+              return (
+                <li key={c.id} className="border-b border-[#EEE7DC] last:border-0 pb-2.5 last:pb-0">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">{c.company && c.company !== '—' ? c.company : '(no company)'}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-[1px] text-[10px] font-[600] ${st.cls}`}>{st.label}{when ? ` · ${when}` : ''}</span>
+                  </div>
+                  <p className="text-[11.5px] text-[#7A6A60] truncate">
+                    {[c.name && c.name !== '—' ? c.name : '', c.jobTitle && c.jobTitle !== '—' ? c.jobTitle : ''].filter(Boolean).join(' · ')}
+                  </p>
+                  <div className="mt-1 flex items-start gap-1.5">
+                    <span className="shrink-0 rounded-full px-2 py-[1px] text-[10.5px] font-[600] text-white" style={{ background: theme.color }}>{theme.label}</span>
+                    {snippet && theme.key !== 'none' && <span className="text-[11.5px] leading-snug text-[#2A1F1A]">{snippet}{uc.text.length > 140 ? '…' : ''}</span>}
+                  </div>
+                  <div className="mt-1.5 rounded-[8px] bg-[#F9F5F1] px-2 py-1.5">
+                    <p className="text-[10px] uppercase tracking-[.05em] text-[#7A6A60] font-[600]">
+                      Latest SDR note{c.noteBy ? ` · ${c.noteBy}` : ''}{c.noteAt ? ` · ${fmtMeetingDate(c.noteAt)}` : ''}
+                    </p>
+                    <p className="text-[11.5px] leading-snug text-[#2A1F1A]">{c.notes ? c.notes : <span className="text-[#9A8C82]">No notes on the meeting yet.</span>}</p>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {footer && <p className="mt-2 pt-2 border-t border-[#EEE7DC] text-[11px] text-[#8A5A14]">{footer}</p>}
+      </div>
+    </>
+  )
+}
 
 function FunnelTable({
   stages, breakdown, countHeader = 'Count',
@@ -291,9 +419,12 @@ function FunnelTable({
           const bd = breakdown[stage.breakdownKey]
 
           return (
-            <div key={stage.label}>
+            <div key={stage.label} className={cn('relative', stage.hoverRows && 'group/stage hover:z-40 focus-within:z-40')} tabIndex={stage.hoverRows ? 0 : undefined}>
               <div className="funnel-stage">
-                <div className="funnel-name">{stage.label}</div>
+                <div className="funnel-name">
+                  {stage.label}
+                  {stage.hoverRows && <span className="block text-[10px] font-[500] text-[#2563EB] underline decoration-dotted underline-offset-2">hover for details</span>}
+                </div>
                 <div className="flex flex-col gap-1.5 w-full">
                   <div className="funnel-track w-full">
                     <div className="funnel-fill" style={{ width: `${pct}%`, background: stage.color }}>
@@ -318,6 +449,7 @@ function FunnelTable({
                 </div>
                 <div className="funnel-drop">{drop === null ? '—' : `${drop}%`}</div>
               </div>
+              {stage.hoverRows && <MeetingHoverList rows={stage.hoverRows} title={stage.hoverTitle || stage.label} footer={stage.hoverFooter} />}
             </div>
           )
         })}
@@ -342,11 +474,42 @@ export function MQLLeadStatusFunnel({ data }: { data: WeekMetrics }) {
     if (raw) leadStatus = JSON.parse(raw)
   } catch {}
 
+  let meetings: { booked: number; completed: number; completed_confirmed: number; held_unconfirmed: number; no_show: number; upcoming: number; canceled_only: number; details: MeetingRow[] } | null = null
+  try {
+    const raw = data['meetings_funnel']?.value
+    if (raw && raw !== 'null') meetings = JSON.parse(raw)
+  } catch {}
+
+  // Source split under the two meeting-based rows must come from the same meetings population (not hs_lead_status).
+  if (meetings) {
+    const split = (rows: MeetingRow[]) => {
+      const ads = rows.filter(r => r.ads).length
+      return { working: 0, linkedinAds: ads, website: rows.length - ads, total: rows.length }
+    }
+    breakdown = {
+      ...breakdown,
+      demo_booked: split(meetings.details),
+      demo_completed: split(meetings.details.filter(d => d.status === 'completed' || d.status === 'held')),
+    }
+  }
+
   const subStages: FunnelStage[] = [
     { label: 'New', value: leadStatus.new || 0, color: '#3D5A8C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'new' },
     { label: 'Working', value: leadStatus.working || 0, color: '#8A6152', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'working' },
-    { label: 'Demo Booked', value: leadStatus.demo_booked || 0, color: '#B9822E', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_booked' },
-    { label: 'Demo Completed', value: leadStatus.demo_completed || 0, color: '#A06E5B', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_completed' },
+    // Demo Booked / Demo Completed come from the HubSpot MEETINGS object (outcome + the SDR's meeting notes), not from
+    // hs_lead_status - falls back to the lead-status numbers only if the meetings data is unavailable.
+    {
+      label: 'Demo Booked', value: meetings ? meetings.booked : (leadStatus.demo_booked || 0), color: '#B9822E', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_booked',
+      hoverRows: meetings ? meetings.details : undefined, hoverTitle: 'Demo booked - meetings on the lead, with company, use case and SDR notes',
+    },
+    {
+      label: 'Demo Completed', value: meetings ? meetings.completed : (leadStatus.demo_completed || 0), color: '#A06E5B', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_completed',
+      hoverRows: meetings ? meetings.details.filter(d => d.status === 'completed' || d.status === 'held') : undefined,
+      hoverTitle: 'Demo completed - meetings that took place (booked meeting time has passed), with the SDR\'s latest note',
+      hoverFooter: meetings
+        ? `${meetings.completed_confirmed} confirmed Completed in HubSpot; ${meetings.held_unconfirmed} took place but nobody set the meeting outcome (counted, since they were not cancelled, rescheduled or marked no-show). Excluded: ${meetings.no_show} no-show, ${meetings.canceled_only} cancelled/rescheduled only, ${meetings.upcoming} upcoming.`
+        : undefined,
+    },
     { label: 'Junk/Unqualified', value: leadStatus.junk || 0, color: '#BE4A3C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'junk' },
   ]
   subStages.sort((a, b) => b.value - a.value)
