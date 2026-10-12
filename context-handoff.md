@@ -508,3 +508,8 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     contacts and returns `autoLifecycle` per contact (cache prefix `v9`); `getMqlsCount` ignores a lifecycle stage when the flag is set. Form-based rule
     (Book a Demo / Email Form / Pre-Built Agents / GSI / Accenture / Partner Form = MQL) unchanged. Playbook 35% -> 0%, Studio Users 11% -> 0%.
     Open: ask team how to treat auto-promoted contacts everywhere else (Executive funnel, MQL Lifecycle Status Funnel).
+40. **2026-10-12 — Partner Form count includes older contacts newly tagged (BUILT, deploy pending).** Partner leads are often old contacts (Apollo imports, June)
+    that the Lead Scoring Agent later tags `Partner Form`; createdate never changes so they were missed (last week: dashboard 2, real 5 - Clara D'Silva /
+    Korcomptenz, David Vergin / oXya, Rajesh Marar / CloudArmee). `/api/hubspot/mqls` (mode=all only) now finds Partner-Form contacts created BEFORE the window
+    and modified inside it, reads `lead_form_type` property history, and counts those whose Partner Form tag was ADDED inside the window into
+    `by_form_type_contains['Partner Form']` (also returned as `partner_retagged`). Other categories unchanged. Cache prefix `v10`. Past months rise too (Sep: 34 -> 50).

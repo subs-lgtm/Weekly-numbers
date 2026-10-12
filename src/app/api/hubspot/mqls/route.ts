@@ -176,6 +176,46 @@ async function flagAutoLifecycle(apiKey: string, contacts: any[]): Promise<Set<s
   return flagged
 }
 
+// Partner leads are often OLD contacts (e.g. imported from Apollo in June) that the Lead Scoring Agent later tags
+// with lead_form_type "Partner Form". createdate never changes, so counting by createdate alone missed them
+// (last week: 2 counted, 5 real). This finds contacts created BEFORE the window whose Partner Form tag was added
+// DURING it, using the lead_form_type property history. Counted only into by_form_type_contains['Partner Form'].
+async function findNewlyTaggedPartnerLeads(apiKey: string, startMs: number, endMs: number): Promise<Array<{ id: string; name: string; company: string; taggedAt: string }>> {
+  const out: Array<{ id: string; name: string; company: string; taggedAt: string }> = []
+  try {
+    const older = await searchAll(apiKey, [{
+      filters: [
+        { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Partner Form' },
+        { propertyName: 'createdate', operator: 'LT', value: startMs.toString() },
+        { propertyName: 'lastmodifieddate', operator: 'GTE', value: startMs.toString() },
+        { propertyName: 'email', operator: 'NOT_CONTAINS_TOKEN', value: 'lyzr.ai' },
+      ],
+    }], ['createdate'])
+    for (let i = 0; i < older.length; i += 50) {
+      const res = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/batch/read`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertiesWithHistory: ['lead_form_type'], properties: ['firstname', 'lastname', 'company'], inputs: older.slice(i, i + 50).map((c: any) => ({ id: String(c.id) })) }),
+      })
+      if (!res.ok) { if (res.status === 429) await new Promise(r => setTimeout(r, 1100)); continue }
+      const data = await res.json()
+      for (const c of data.results || []) {
+        const hist = [...(c.propertiesWithHistory?.lead_form_type || [])].sort((a: any, b: any) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+        let had = false
+        for (const e of hist) {
+          const has = String(e.value || '').split(';').map((x: string) => x.trim()).includes('Partner Form')
+          const t = Date.parse(e.timestamp)
+          if (has && !had && t >= startMs && t < endMs) {
+            out.push({ id: String(c.id), name: [c.properties?.firstname, c.properties?.lastname].filter(Boolean).join(' '), company: c.properties?.company || '', taggedAt: e.timestamp })
+          }
+          had = has
+        }
+      }
+    }
+  } catch (e) { console.warn('[mqls] partner re-tag check skipped:', (e as Error).message) }
+  return out
+}
+
 async function computeGET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const start = searchParams.get('start')
@@ -198,7 +238,7 @@ async function computeGET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v9_all' : 'v9'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v10_all' : 'v10'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
 
@@ -769,6 +809,10 @@ async function computeGET(req: NextRequest) {
       }
     }
 
+    // Older contacts newly tagged Partner Form inside this window (mode=all / Leads page only)
+    const partnerRetagged = mode === 'all' ? await findNewlyTaggedPartnerLeads(apiKey, startMs, endMs) : []
+    if (partnerRetagged.length) byFormTypeContains['Partner Form'] = (byFormTypeContains['Partner Form'] || 0) + partnerRetagged.length
+
     const result = {
       total,
       mql_status_breakdown: {
@@ -811,6 +855,7 @@ async function computeGET(req: NextRequest) {
       by_form_type: byFormType,
       webinar_qualified: webinarQualified,
       by_form_type_contains: byFormTypeContains,
+      partner_retagged: partnerRetagged,
       form_type_breakdown: formTypeBreakdown,
       by_source_category: bySourceCategory,
       by_source_funnel: bySourceFunnel,
@@ -882,7 +927,7 @@ export async function GET(req: NextRequest) {
   const slim = searchParams.get('slim') === '1'
   const includePipeline = searchParams.get('includePipeline') === '1'
   const includeClosedWon = searchParams.get('includeClosedWon') === '1'
-  const prefix = `${mode === 'all' ? 'v9_all' : 'v9'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const prefix = `${mode === 'all' ? 'v10_all' : 'v10'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
   const out = (r: any) => {
     if (!slim) return NextResponse.json(r)
     const { contacts_by_priority, ...rest } = r
