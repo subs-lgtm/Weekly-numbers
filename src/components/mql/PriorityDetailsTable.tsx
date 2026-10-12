@@ -10,52 +10,95 @@ type LeadContact = {
   owner: string; createdate: string | null; lastmodifieddate: string | null
   demoBooked: boolean; demoCompleted: boolean; demoNoShow: boolean
   message?: string; platformTools?: string; campaign?: string; leadSource?: string
+  interaction?: { originalSource: string; firstPage: string; lastPage: string; pageViews: number; visits: number; lastContacted: string | null; salesActivities: number; latestMeeting: string | null } | null
 }
 
 // Hover card on the lead name: why the person came in. Book a Demo form -> the message they typed
 // and the products they ticked; LinkedIn lead-gen -> campaign, title and company (HubSpot stores no
 // message for those). Portal + fixed positioning so the table's scroll container can't clip it.
+const STAGE_LABEL: Record<string, string> = {
+  lead: 'Lead', marketingqualifiedlead: 'MQL', opportunity: 'SQL', '249550600': 'Opportunity', customer: 'Customer', '242934529': 'Discarded', '258802811': 'Disqualified',
+}
+const SOURCE_LABEL: Record<string, string> = {
+  PAID_SEARCH: 'Paid search', PAID_SOCIAL: 'Paid social', ORGANIC_SEARCH: 'Organic search', DIRECT_TRAFFIC: 'Direct traffic', SOCIAL_MEDIA: 'Social media',
+  REFERRALS: 'Referral', EMAIL_MARKETING: 'Email', OFFLINE: 'Offline / integration', OTHER_CAMPAIGNS: 'Other campaign', AI_REFERRALS: 'AI referral',
+}
+function shortPage(u: string): string {
+  try { const x = new URL(u); return (x.hostname.replace(/^www\./, '') + x.pathname).replace(/\/$/, '') } catch { return u }
+}
+function ago(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return ''
+  const d = Math.floor(ms / 86_400_000)
+  return d >= 1 ? `${d}d ago` : `${Math.max(1, Math.floor(ms / 3_600_000))}h ago`
+}
+
+// Hover card on the lead name: who they are, why they came in (form message / LinkedIn lead-form answers),
+// how they interacted, and where the lead stands now. Portal + fixed positioning so the table's scroll
+// container can't clip it. Job title / company come straight from HubSpot and are blank for many leads.
 function WhyCameIn({ c }: { c: LeadContact }) {
   const [tip, setTip] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
   const show = (e: React.MouseEvent<HTMLElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
-    const W = 340
+    const W = 400
     const left = Math.max(8, Math.min(r.left, window.innerWidth - W - 8))
-    setTip(window.innerHeight - r.bottom >= 260 ? { left, top: r.bottom + 6 } : { left, bottom: window.innerHeight - r.top + 6 })
+    setTip(window.innerHeight - r.bottom >= 420 ? { left, top: r.bottom + 6 } : { left, bottom: window.innerHeight - r.top + 6 })
   }
   const isLinkedIn = c.leadSource === 'LinkedIn'
   // LinkedIn lead-gen leads arrive with both form answers packed into `message` as
   // "<question>: <answer>" lines — split them into labelled rows instead of showing the raw text.
   const li = (c.message || '').match(/^What problem are you trying to solve with AI agents\?:\s*([\s\S]*?)\s*\n\s*Which platforms or tools are you currently using or evaluating\?:\s*([\s\S]*)$/)
+  const i = c.interaction
+  const Label = ({ children }: { children: React.ReactNode }) => <div className="text-[10px] uppercase tracking-wider text-[#B9AFA6] mt-2.5 mb-0.5">{children}</div>
+  const titleOk = c.jobTitle && c.jobTitle !== '—'
+  const companyOk = c.company && c.company !== '—'
   return (
     <>
-      <span className="cursor-help" onMouseEnter={show} onMouseLeave={() => setTip(null)}>{c.name}</span>
+      <span className="cursor-help border-b border-dashed border-[#7A6A60]/50" onMouseEnter={show} onMouseLeave={() => setTip(null)}>{c.name}</span>
       {tip && typeof document !== 'undefined' && createPortal(
         <div
-          style={{ position: 'fixed', left: tip.left, top: tip.top, bottom: tip.bottom, width: 340, zIndex: 9999 }}
-          className="pointer-events-none bg-[#2A1F1A] text-white text-[12px] p-3.5 rounded-lg shadow-xl border border-[#5C4E46] leading-relaxed text-left font-[400]"
+          style={{ position: 'fixed', left: tip.left, top: tip.top, bottom: tip.bottom, width: 400, zIndex: 9999 }}
+          className="pointer-events-none bg-[#2A1F1A] text-white text-[12px] p-4 rounded-lg shadow-xl border border-[#5C4E46] leading-relaxed text-left font-[400]"
         >
-          <div className="text-[13px] font-[600] mb-0.5">{c.name}</div>
-          <div className="text-[11px] text-[#B9AFA6] mb-2">
-            {[c.jobTitle !== '—' ? c.jobTitle : '', c.company !== '—' ? c.company : ''].filter(Boolean).join(' · ') || c.email}
-          </div>
-          <div className="text-[10px] uppercase tracking-wider text-[#B9AFA6] mb-0.5">{isLinkedIn ? 'Problem they want to solve (LinkedIn lead form)' : 'Why they came in'}</div>
+          <div className="text-[14px] font-[600]">{c.name}</div>
+          <div className="text-[12px] text-[#E8DED6]">{titleOk ? c.jobTitle : <span className="text-[#B9AFA6] italic">Job title not in HubSpot</span>}{companyOk ? ` · ${c.company}` : ''}</div>
+          <div className="text-[11px] text-[#B9AFA6]">{c.email}</div>
+
+          <Label>{isLinkedIn ? 'Use case — problem they want to solve (LinkedIn lead form)' : 'Use case — why they came in'}</Label>
           {li ? (
             <>
               <div className="whitespace-pre-line">{li[1] || '—'}</div>
-              <div className="mt-2"><span className="text-[10px] uppercase tracking-wider text-[#B9AFA6]">Platforms / tools they use or evaluate</span><div>{li[2] || '—'}</div></div>
+              <div className="mt-1.5"><span className="text-[#B9AFA6]">Platforms / tools: </span>{li[2] || '—'}</div>
             </>
           ) : c.message ? (
             <div className="whitespace-pre-line">{c.message}</div>
           ) : (
             <div className="text-[#B9AFA6] italic">{isLinkedIn ? 'No form answers in HubSpot for this lead yet.' : 'No message left on the form.'}</div>
           )}
-          {c.platformTools && (
-            <div className="mt-2"><span className="text-[10px] uppercase tracking-wider text-[#B9AFA6]">Interested in</span><div>{c.platformTools}</div></div>
+          {c.platformTools && <div className="mt-1.5"><span className="text-[#B9AFA6]">Interested in: </span>{c.platformTools}</div>}
+          {c.campaign && <div className="mt-1.5"><span className="text-[#B9AFA6]">Campaign: </span>{c.campaign}</div>}
+
+          <Label>Interaction</Label>
+          {i ? (
+            <div className="space-y-0.5">
+              <div><span className="text-[#B9AFA6]">Came from: </span>{SOURCE_LABEL[i.originalSource] || i.originalSource || '—'}{c.source && c.source !== 'Other' ? ` (${c.source})` : ''}</div>
+              <div><span className="text-[#B9AFA6]">Website: </span>{i.pageViews} page view{i.pageViews === 1 ? '' : 's'} across {i.visits} visit{i.visits === 1 ? '' : 's'}</div>
+              {i.firstPage && <div><span className="text-[#B9AFA6]">First page: </span>{shortPage(i.firstPage)}</div>}
+              {i.lastPage && i.lastPage !== i.firstPage && <div><span className="text-[#B9AFA6]">Last page: </span>{shortPage(i.lastPage)}</div>}
+              <div><span className="text-[#B9AFA6]">Meeting: </span>{i.latestMeeting ? `latest ${ago(i.latestMeeting) || new Date(i.latestMeeting).toLocaleDateString()}` : 'none logged'}{c.demoBooked ? ' · demo booked' : ''}{c.demoCompleted ? ' · demo completed' : ''}{c.demoNoShow ? ' · no-show' : ''}</div>
+              <div><span className="text-[#B9AFA6]">Team outreach: </span>{i.lastContacted ? `last contacted ${ago(i.lastContacted)}` : 'not contacted yet'}{i.salesActivities ? ` · ${i.salesActivities} logged activit${i.salesActivities === 1 ? 'y' : 'ies'}` : ''}</div>
+            </div>
+          ) : (
+            <div className="text-[#B9AFA6] italic">No interaction summary for this lead.</div>
           )}
-          {c.campaign && (
-            <div className="mt-2"><span className="text-[10px] uppercase tracking-wider text-[#B9AFA6]">Campaign</span><div>{c.campaign}</div></div>
-          )}
+
+          <Label>Latest status</Label>
+          <div className="space-y-0.5">
+            <div><span className="text-[#B9AFA6]">Lead status: </span>{c.status || '—'} <span className="text-[#B9AFA6]">· Stage: </span>{STAGE_LABEL[c.lifecycleStage] || c.lifecycleStage || '—'}</div>
+            <div><span className="text-[#B9AFA6]">Owner: </span>{c.owner && c.owner !== '—' ? c.owner : 'Unassigned'} <span className="text-[#B9AFA6]">· Score: </span>{c.score || '—'}</div>
+            <div><span className="text-[#B9AFA6]">Created: </span>{c.createdate ? `${ago(c.createdate) || 'today'} (${new Date(c.createdate).toLocaleDateString()})` : '—'}{c.lastmodifieddate ? ` · updated ${ago(c.lastmodifieddate) || 'just now'}` : ''}</div>
+          </div>
         </div>,
         document.body,
       )}

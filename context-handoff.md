@@ -479,3 +479,10 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     so High/Medium/Low counts, Priority Details and the trend cards stop shifting. Protects only leads seen from now on; the
     already-overwritten v1 scores (Aug 24 - Sep 7 etc.) are unrecoverable. Jayant Raman was seeded manually (94). Cache: mqls `v7`.
     Don't "simplify" this back to reading HubSpot's category directly without asking.
+36. **2026-10-12 — Lead hover expanded + team changes merged.** Priority Details name hover (`WhyCameIn` in `PriorityDetailsTable.tsx`) now shows
+    job title/company/email, USE CASE (form message / LinkedIn lead-form answers, tools, campaign), INTERACTION (original source, page
+    views/visits, first/last page, latest meeting, last contacted, logged activities) and LATEST STATUS (lead status, stage label, owner, score,
+    age). `/api/hubspot/mqls` returns an `interaction` object for Book a Demo leads only (cache `v8`). Names carry a dashed underline as the cue.
+    Nirupam pushed (Oct 7-9): Microsoft login, Firebase session cookie, and `src/proxy.ts` which now 401s every `/api/*` call without the
+    `wnd_session` cookie or a Firebase bearer - so unauthenticated `curl` against prod APIs no longer works (earlier curl-based checks in this
+    file predate it). Local preview now needs a throwaway `SESSION_SECRET` in `.env.local` plus a cookie signed with it (see `src/lib/session-cookie.ts`).

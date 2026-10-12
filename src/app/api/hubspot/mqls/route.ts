@@ -167,7 +167,7 @@ export async function GET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v7_all' : 'v7'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v8_all' : 'v8'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
     if (!noCache) {
@@ -218,6 +218,14 @@ export async function GET(req: NextRequest) {
       // registration came from.
       'lsa_lead_source',
       'lead_first_touch_page',
+      // Interaction history for the lead hover (Book a Demo leads only are populated below).
+      'hs_analytics_first_url',
+      'hs_analytics_last_url',
+      'hs_analytics_num_page_views',
+      'hs_analytics_num_visits',
+      'hs_analytics_source',
+      'notes_last_contacted',
+      'num_notes',
     ]
 
     const bookDemoContacts = await searchAll(
@@ -459,6 +467,17 @@ export async function GET(req: NextRequest) {
         campaign: (props.lead_campaign_name || '').trim(),
         webinarExcluded: false as boolean,
         leadSource: (props.lead_source || '').trim(),
+        // Interaction summary for the Priority Details hover - Book a Demo leads only, to keep the Leads page payload small.
+        interaction: (props.lead_form_type || '').includes('Book a Demo') ? {
+          originalSource: props.hs_analytics_source || '',
+          firstPage: props.hs_analytics_first_url || '',
+          lastPage: props.hs_analytics_last_url || '',
+          pageViews: parseInt(props.hs_analytics_num_page_views || '0', 10) || 0,
+          visits: parseInt(props.hs_analytics_num_visits || '0', 10) || 0,
+          lastContacted: props.notes_last_contacted || null,
+          salesActivities: parseInt(props.num_notes || '0', 10) || 0,
+          latestMeeting: props.hs_latest_meeting_activity || null,
+        } : null,
       }
       if (cat === 'high_priority') contactsByPriority.high.push(contactDetail)
       else if (cat === 'medium_priority') contactsByPriority.medium.push(contactDetail)
