@@ -75,6 +75,7 @@ type Props = {
     contacts_by_priority: HubSpotMQLData['contacts_by_priority']
     meetings_funnel?: any
     meetings_activity?: any
+    pipeline_activity?: any
     by_source_category: Record<string, number>
     by_source_funnel: HubSpotMQLData['by_source_funnel']
   }) => void
@@ -159,6 +160,7 @@ export function MQLHubSpotData({ weekStart, queryStart, queryEnd, onData, includ
         contacts_by_priority: json.contacts_by_priority,
         meetings_funnel: json.meetings_funnel,
         meetings_activity: json.meetings_activity,
+        pipeline_activity: json.pipeline_activity,
         by_source_category: json.by_source_category || {},
         by_source_funnel: json.by_source_funnel,
       })

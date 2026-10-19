@@ -550,3 +550,11 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     (outbound/Apollo/Agent Studio-only contacts excluded - the sales team books many meetings with those: 111 raw vs 14 marketing leads for 12-18 Oct). Result 12-18 Oct: booked 14, held 14, upcoming 5 (5-11 Oct: 11/13; Sep: 104/126).
     Used by: MQLs page Meeting Booked card + Demo Booked/Demo Completed funnel rows (+ source split + hovers), MQL->Demo rate, Summary page Meetings Booked card (value, prev, hover). Old cohort fields (`meetings_funnel`, funnel.meeting_booked) still returned as fallback.
     Mixed semantics note: funnel rows show "% of MQL" against the cohort MQL total, so it can exceed 100% for long ranges.
+47. **2026-10-19 — SQL / Opportunity / Demo Completed key numbers are activity-based too.** After item 46 the user still saw zeros on the Summary key numbers for 12-18 Oct. Causes: (a) production was still the
+    7-day-old build (d9d770e was pushed to git but never deployed), (b) SQL / Opportunity / Demo Completed / Demo No Show were cohort- or lead-status-based. User chose: SQL by stage entry, Opportunity by deals.
+    New `fetchPipelineActivity` in `/api/hubspot/mqls` (MQL mode only, cache `v15`, field `pipeline_activity`): SQL = unique marketing-form leads (`isMarketingLead`) whose `hs_v2_date_entered_opportunity` is in the period,
+    excluding contacts now Discarded (242934529) and stage entries whose history source is COMPANIES (HubSpot company copy); Opportunity = unique marketing-form leads on a Studio-pipeline deal CREATED in the period with
+    deal_source in MARKETING_DEAL_SOURCES (same deal rule as Executive Dashboard; contact lifecycle label never read); also returns deals count + value. Demo Completed key number = meetings_activity.completed.
+    Wired in: MQLs page (sql_count / opportunity_count / demo_completed_count + prev-period), Summary key numbers (curr + prev). 12-18 Oct: SQL 4, Opp 4 (4 deals, $1.54M), meetings booked 14 / held 14; old cohort logic gave 0/0.
+    The Consolidated MQL Lifecycle funnel + Lead Status funnel rows other than Demo Booked/Completed remain COHORT-based (% of the period's MQLs) - intentionally unchanged. Demo No Show still lead-status/cohort based
+    (HubSpot meeting outcomes never record no-shows); shows 0 in most periods.

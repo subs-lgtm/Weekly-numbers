@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { gzipSync, gunzipSync } from 'zlib'
+import { STUDIO_DEALS_PIPELINE_ID, MARKETING_DEAL_SOURCES, STAGE_INFO } from '@/lib/marketing-opportunities'
 
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 
@@ -453,6 +454,112 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
   }
 }
 
+// ACTIVITY-BASED SQL and Opportunity for the selected period (independent of when the LEAD was created):
+//   SQL         = unique marketing-form leads that ENTERED the SQL stage (HubSpot internal value 'opportunity') in [start, end),
+//                 excluding stage changes HubSpot copied from the company and leads now Discarded.
+//   Opportunity = unique marketing-form leads linked to a marketing-sourced Studio Deals deal CREATED in [start, end)
+//                 (same deal-based rule as the Executive Dashboard: deal_source in MARKETING_DEAL_SOURCES). The contact's
+//                 own lifecycle label is never consulted.
+async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: number) {
+  const post = async (url: string, body: any) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(`${HUBSPOT_API_BASE}${url}`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (res.status === 429) { await new Promise(r => setTimeout(r, 1100)); continue }
+      return res.ok ? res.json() : { results: [] }
+    }
+    return { results: [] }
+  }
+  const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity']
+  const toRow = (id: string, c: any, extra: any = {}) => {
+    const src = c.lead_source_category || ''
+    return {
+      id, name: [c.firstname, c.lastname].filter(Boolean).join(' ') || '—', company: c.company || '—', jobTitle: c.jobtitle || '—',
+      message: (c.message || '').trim().slice(0, 600), platformTools: (c.platform_tools || '').trim(),
+      ads: src === 'Paid Campaigns' || src === 'Paid Search / Paid Social', formType: String(c.lead_form_type || ''), ...extra,
+    }
+  }
+
+  // ---- SQL: contacts that entered the SQL stage in the period
+  const sqlCandidates: any[] = []
+  let after: string | undefined
+  while (true) {
+    const body: any = { filterGroups: [{ filters: [
+      { propertyName: 'hs_v2_date_entered_opportunity', operator: 'GTE', value: String(startMs) },
+      { propertyName: 'hs_v2_date_entered_opportunity', operator: 'LT', value: String(endMs) },
+    ] }], properties: CP, limit: 100 }
+    if (after) body.after = after
+    const d = await post('/crm/v3/objects/contacts/search', body)
+    sqlCandidates.push(...(d.results || []))
+    after = d.paging?.next?.after
+    if (!after) break
+  }
+  const sqlMarketing = sqlCandidates.filter(c => isMarketingLead(c.properties || {}) && (c.properties?.lifecyclestage || '') !== '242934529')
+  const fromCompany = new Set<string>()
+  for (let i = 0; i < sqlMarketing.length; i += 50) {
+    const d = await post('/crm/v3/objects/contacts/batch/read', { propertiesWithHistory: ['lifecyclestage'], properties: ['lifecyclestage'], inputs: sqlMarketing.slice(i, i + 50).map(c => ({ id: String(c.id) })) })
+    for (const r of d.results || []) {
+      const hit = (r.propertiesWithHistory?.lifecyclestage || []).find((e: any) => e.value === 'opportunity' && Date.parse(e.timestamp) >= startMs && Date.parse(e.timestamp) < endMs)
+      if (hit?.sourceType === 'COMPANIES') fromCompany.add(String(r.id))
+    }
+  }
+  const sqlRows = sqlMarketing.filter(c => !fromCompany.has(String(c.id)))
+    .map(c => toRow(String(c.id), c.properties || {}, { at: c.properties?.hs_v2_date_entered_opportunity || null }))
+
+  // ---- Opportunity: marketing-sourced Studio deals created in the period -> their marketing-form contacts
+  const deals: any[] = []
+  after = undefined
+  while (true) {
+    const body: any = { filterGroups: [{ filters: [
+      { propertyName: 'createdate', operator: 'GTE', value: String(startMs) },
+      { propertyName: 'createdate', operator: 'LT', value: String(endMs) },
+      { propertyName: 'pipeline', operator: 'EQ', value: STUDIO_DEALS_PIPELINE_ID },
+      { propertyName: 'deal_source', operator: 'IN', values: Array.from(MARKETING_DEAL_SOURCES) },
+    ] }], properties: ['dealname', 'amount', 'dealstage', 'deal_source', 'createdate'], limit: 100 }
+    if (after) body.after = after
+    const d = await post('/crm/v3/objects/deals/search', body)
+    deals.push(...(d.results || []))
+    after = d.paging?.next?.after
+    if (!after) break
+  }
+  const oppRows: any[] = []
+  let dealCount = 0, dealValue = 0
+  if (deals.length) {
+    const contactsOfDeal = new Map<string, string[]>()
+    for (let i = 0; i < deals.length; i += 100) {
+      const d = await post('/crm/v4/associations/deals/contacts/batch/read', { inputs: deals.slice(i, i + 100).map(x => ({ id: String(x.id) })) })
+      for (const r of d.results || []) contactsOfDeal.set(String(r.from.id), (r.to || []).map((t: any) => String(t.toObjectId)))
+    }
+    const cids = Array.from(new Set(Array.from(contactsOfDeal.values()).flat()))
+    const contacts = new Map<string, any>()
+    for (let i = 0; i < cids.length; i += 100) {
+      const d = await post('/crm/v3/objects/contacts/batch/read', { properties: CP, inputs: cids.slice(i, i + 100).map(id => ({ id })) })
+      for (const c of d.results || []) if (isMarketingLead(c.properties || {})) contacts.set(String(c.id), c.properties || {})
+    }
+    const best = new Map<string, any>() // contact -> its largest qualifying deal
+    for (const dl of deals) {
+      const amt = parseFloat(dl.properties?.amount || '0') || 0
+      let counted = false
+      for (const cid of contactsOfDeal.get(String(dl.id)) || []) {
+        if (!contacts.has(cid)) continue
+        counted = true
+        const cur = best.get(cid)
+        if (!cur || amt > cur.amt) best.set(cid, { dl, amt })
+      }
+      if (counted) { dealCount++; dealValue += amt }
+    }
+    best.forEach(({ dl, amt }, cid) => {
+      oppRows.push(toRow(cid, contacts.get(cid), {
+        at: dl.properties?.createdate || null, dealName: dl.properties?.dealname || '', dealAmount: amt,
+        dealStage: STAGE_INFO[String(dl.properties?.dealstage)]?.label || '', dealSource: dl.properties?.deal_source || '',
+      }))
+    })
+  }
+  return {
+    sql: { count: sqlRows.length, details: sqlRows },
+    opportunity: { count: oppRows.length, deals: dealCount, value: dealValue, details: oppRows },
+  }
+}
+
 async function computeGET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const start = searchParams.get('start')
@@ -475,7 +582,7 @@ async function computeGET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v14_all' : 'v14'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v15_all' : 'v15'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
 
@@ -1047,6 +1154,13 @@ async function computeGET(req: NextRequest) {
       }
     }
 
+    // Activity-based SQL / Opportunity for the period (MQL page only)
+    let pipelineActivity: any = null
+    if (mode !== 'all') {
+      try { pipelineActivity = await fetchPipelineActivity(apiKey, startMs, endMs) }
+      catch (e) { console.warn('[mqls] pipeline activity skipped:', (e as Error).message) }
+    }
+
     // Activity-based meetings for the period (MQL page only)
     let meetingsActivity: any = null
     if (mode !== 'all') {
@@ -1130,6 +1244,7 @@ async function computeGET(req: NextRequest) {
       partner_retagged: partnerRetagged,
       meetings_funnel: meetingsFunnel,
       meetings_activity: meetingsActivity,
+      pipeline_activity: pipelineActivity,
       form_type_breakdown: formTypeBreakdown,
       by_source_category: bySourceCategory,
       by_source_funnel: bySourceFunnel,
@@ -1201,7 +1316,7 @@ export async function GET(req: NextRequest) {
   const slim = searchParams.get('slim') === '1'
   const includePipeline = searchParams.get('includePipeline') === '1'
   const includeClosedWon = searchParams.get('includeClosedWon') === '1'
-  const prefix = `${mode === 'all' ? 'v14_all' : 'v14'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const prefix = `${mode === 'all' ? 'v15_all' : 'v15'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
   const out = (r: any) => {
     if (!slim) return NextResponse.json(r)
     const { contacts_by_priority, ...rest } = r

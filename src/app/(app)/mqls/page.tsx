@@ -59,6 +59,7 @@ function MQLPageInner() {
     contacts_by_priority?: ContactsByPriority
     meetings_funnel?: any
     meetings_activity?: any
+    pipeline_activity?: any
     by_source_category?: Record<string, number>
     by_source_funnel?: Record<string, { total: number; mql: number; sql: number; opportunity: number; customer: number; working: number; pipelineValue: number }>
   } | null>(null)
@@ -69,6 +70,9 @@ function MQLPageInner() {
     qualified_mqls: number
     meeting_booked: number
     funnel?: Funnel
+    sql_activity?: number
+    opp_activity?: number
+    demo_completed_activity?: number
   } | null>(null)
 
   // Month-to-date total MQLs (calendar month up to today) — for the Monthly MQLs card
@@ -120,6 +124,9 @@ function MQLPageInner() {
             qualified_mqls: json.qualified_mqls || 0,
             meeting_booked: json.meetings_activity?.booked ?? (json.funnel?.meeting_booked || 0),
             funnel: json.funnel,
+            sql_activity: json.pipeline_activity?.sql?.count,
+            opp_activity: json.pipeline_activity?.opportunity?.count,
+            demo_completed_activity: json.meetings_activity?.completed,
           })
         }
       })
@@ -186,14 +193,16 @@ function MQLPageInner() {
         updatedAt: null,
       }
       d['sql_count'] = {
-        value: hubspotData.funnel.sql.toString(),
-        notes: 'Live from HubSpot (lifecyclestage)',
+        // Activity-based: marketing-form leads that ENTERED the SQL stage in the selected dates (falls back to the cohort count).
+        value: (hubspotData.pipeline_activity?.sql?.count ?? hubspotData.funnel.sql).toString(),
+        notes: 'Live from HubSpot (SQL stage entered in period)',
         updatedBy: 'hubspot',
         updatedAt: null,
       }
       d['opportunity_count'] = {
-        value: hubspotData.funnel.opportunity.toString(),
-        notes: 'Live from HubSpot (lifecyclestage)',
+        // Activity-based: marketing-form leads linked to a marketing-sourced Studio deal created in the selected dates.
+        value: (hubspotData.pipeline_activity?.opportunity?.count ?? hubspotData.funnel.opportunity).toString(),
+        notes: 'Live from HubSpot (Studio deals created in period)',
         updatedBy: 'hubspot',
         updatedAt: null,
       }
@@ -210,8 +219,8 @@ function MQLPageInner() {
         updatedAt: null,
       }
       d['demo_completed_count'] = {
-        value: hubspotData.funnel.demo_completed.toString(),
-        notes: 'Live from HubSpot (hs_lead_status = Demo Completed)',
+        value: (hubspotData.meetings_activity?.completed ?? hubspotData.funnel.demo_completed).toString(),
+        notes: 'Live from HubSpot (meetings held in period)',
         updatedBy: 'hubspot',
         updatedAt: null,
       }
@@ -325,10 +334,10 @@ function MQLPageInner() {
         updatedBy: 'hubspot',
         updatedAt: null,
       }
-      if (prevHubspotData.funnel?.sql !== undefined) {
+      if (prevHubspotData.sql_activity !== undefined || prevHubspotData.funnel?.sql !== undefined) {
         d['sql_count'] = {
-          value: prevHubspotData.funnel.sql.toString(),
-          notes: 'Live from HubSpot (lifecyclestage)',
+          value: (prevHubspotData.sql_activity ?? prevHubspotData.funnel?.sql ?? 0).toString(),
+          notes: 'Live from HubSpot (SQL stage entered in period)',
           updatedBy: 'hubspot',
           updatedAt: null,
         }
