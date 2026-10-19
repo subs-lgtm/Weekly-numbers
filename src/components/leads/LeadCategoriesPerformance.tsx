@@ -56,10 +56,19 @@ const CATEGORY_DEFS: Array<{ key: string; label: string; icon: any; inTotal?: bo
   { key: 'Email Form', label: 'Email Form', icon: Inbox },
 ]
 
-function getMqlsCount(contacts: LeadContact[]) {
+// Categories whose "Conv. to MQL" measures REAL progression instead of counting every lead from the form as already converted:
+// a lead counts only if it also submitted Book a Demo (a genuine MQL) or its HubSpot lifecycle stage reached MQL / SQL /
+// Opportunity / Customer by a person or workflow (a stage HubSpot copied from the company record doesn't count).
+// GSI and SI was 100% every week because the form itself was treated as an MQL (2026-10-19, per explicit request).
+const REAL_PROGRESSION_KEYS = new Set(['GSI and SI'])
+
+function getMqlsCount(contacts: LeadContact[], categoryKey?: string) {
+  const realProgression = !!categoryKey && REAL_PROGRESSION_KEYS.has(categoryKey)
   const MQL_FORMS = new Set(['Book a Demo', 'Email Form', 'Pre-Built Agents', 'GSI and SI', 'Accenture', 'Partner Form'])
   return contacts.filter(c => {
-    if (MQL_FORMS.has(c.formType)) return true
+    if (realProgression) {
+      if ((c.formTypes || [c.formType]).includes('Book a Demo')) return true
+    } else if (MQL_FORMS.has(c.formType)) return true
     // A lifecycle stage HubSpot copied from the contact's company (no person / workflow moved it) is not a conversion.
     if (c.autoLifecycle) return false
     const stage = c.lifecycleStage || ''
@@ -105,7 +114,7 @@ export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevM
       const catContacts = currWeek.contacts.filter(c =>
         CONTAINS_MATCH_KEYS.has(def.key) ? (c.formTypes?.includes(def.key) ?? c.formType === def.key) : c.formType === def.key
       )
-      const catMqls = getMqlsCount(catContacts)
+      const catMqls = getMqlsCount(catContacts, def.key)
       const convRate = catContacts.length > 0 ? Math.round((catMqls / catContacts.length) * 100) : 0
 
       const highCount = catContacts.filter(c => (c.score ?? 0) > HIGH_PRIORITY_SCORE).length
@@ -224,7 +233,9 @@ export function LeadCategoriesPerformance({ currWeek, prevWeek, currMonth, prevM
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[#7A6A60]">Conv. to MQL</span>
+                  <span className="text-[#7A6A60]" title={REAL_PROGRESSION_KEYS.has(card.key) ? 'Real progression: leads that also submitted Book a Demo, or reached MQL / SQL / Opportunity / Customer in HubSpot (stages HubSpot copied from the company record are excluded).' : undefined}>
+                    Conv. to MQL{REAL_PROGRESSION_KEYS.has(card.key) ? ' (real)' : ''}
+                  </span>
                   <span className="font-[600] text-[#2A1F1A]">{card.noConv ? '—' : `${card.convRate}%`}</span>
                 </div>
               </div>
