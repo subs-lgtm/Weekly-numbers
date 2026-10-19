@@ -314,6 +314,145 @@ async function fetchMeetingDetails(apiKey: string, contactIds: string[], ownerMa
   return out
 }
 
+// Marketing-lead filter for the meeting activity counts: the contact came through a marketing form other than Agent Studio
+// (Book a Demo, Playbook, Contact Us, Partner Form, GSI and SI, Webinar ...). Excludes outbound / Apollo / Agent Studio-only
+// product users (the sales team books many meetings with those), and internal / test contacts.
+function isMarketingLead(p: any): boolean {
+  const forms = String(p.lead_form_type || '').split(';').map((x: string) => x.trim()).filter(Boolean)
+  if (!forms.some(f => f !== 'Agent Studio')) return false
+  const email = String(p.email || '').toLowerCase()
+  if (email.includes('lyzr.ai')) return false
+  const name = `${p.firstname || ''} ${p.lastname || ''}`
+  if (/\btest\b|\(ignore\)/i.test(name) || /^lyzr/i.test(String(p.company || ''))) return false
+  return true
+}
+
+// ACTIVITY-BASED meetings for the selected period (what leadership counts weekly): independent of when the LEAD was created.
+//   Booked    = unique leads with a meeting BOOKED (meeting record created) inside [start, end), not cancelled / rescheduled.
+//   Completed = unique leads with a meeting that TOOK PLACE (start time inside [start, end) and already past) that was not
+//               cancelled / rescheduled / marked no-show. SDRs rarely set the outcome, so held meetings count; confirmed
+//               COMPLETED ones are reported separately.
+// Lead type is not filtered (a Playbook lead who books a demo counts); @lyzr.ai contacts are excluded.
+async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: number, ownerMap: Record<string, string>) {
+  const post = async (url: string, body: any) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(`${HUBSPOT_API_BASE}${url}`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (res.status === 429) { await new Promise(r => setTimeout(r, 1100)); continue }
+      return res.ok ? res.json() : { results: [] }
+    }
+    return { results: [] }
+  }
+  const MP = ['hs_meeting_outcome', 'hs_meeting_start_time', 'hs_timestamp', 'hs_createdate', 'hs_meeting_title', 'hs_internal_meeting_notes', 'hubspot_owner_id']
+  const searchMeetings = async (prop: 'hs_createdate' | 'hs_timestamp') => {
+    const out: any[] = []
+    let after: string | undefined
+    while (true) {
+      const body: any = { filterGroups: [{ filters: [{ propertyName: prop, operator: 'GTE', value: String(startMs) }, { propertyName: prop, operator: 'LT', value: String(endMs) }] }], properties: MP, limit: 100 }
+      if (after) body.after = after
+      const d = await post('/crm/v3/objects/meetings/search', body)
+      out.push(...(d.results || []))
+      after = d.paging?.next?.after
+      if (!after) break
+    }
+    return out
+  }
+  const [created, started] = await Promise.all([searchMeetings('hs_createdate'), searchMeetings('hs_timestamp')])
+  const meetings = new Map<string, any>()
+  for (const m of [...created, ...started]) meetings.set(String(m.id), m.properties || {})
+  const ids = Array.from(meetings.keys())
+  const empty = { booked: 0, completed: 0, completed_confirmed: 0, held_unconfirmed: 0, no_show: 0, upcoming: 0, details: [] as any[] }
+  if (!ids.length) return empty
+
+  const contactsOf = new Map<string, string[]>()
+  for (let i = 0; i < ids.length; i += 100) {
+    const d = await post('/crm/v4/associations/meetings/contacts/batch/read', { inputs: ids.slice(i, i + 100).map(id => ({ id })) })
+    for (const r of d.results || []) contactsOf.set(String(r.from.id), (r.to || []).map((t: any) => String(t.toObjectId)))
+  }
+  const cids = Array.from(new Set(Array.from(contactsOf.values()).flat()))
+  const contacts = new Map<string, any>()
+  for (let i = 0; i < cids.length; i += 100) {
+    const d = await post('/crm/v3/objects/contacts/batch/read', { properties: ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'hs_object_source_detail_1'], inputs: cids.slice(i, i + 100).map(id => ({ id })) })
+    for (const c of d.results || []) if (isMarketingLead(c.properties || {})) contacts.set(String(c.id), c.properties || {})
+  }
+
+  // SDR notes: latest Note record written by a person on the contact (the meeting's own notes/body are empty or just the Teams invite).
+  const noteIdsOf = new Map<string, string[]>()
+  const allNotes = new Set<string>()
+  const cl = Array.from(contacts.keys())
+  for (let i = 0; i < cl.length; i += 100) {
+    const d = await post('/crm/v4/associations/contacts/notes/batch/read', { inputs: cl.slice(i, i + 100).map(id => ({ id })) })
+    for (const r of d.results || []) { const n = (r.to || []).map((t: any) => String(t.toObjectId)); if (n.length) { noteIdsOf.set(String(r.from.id), n); n.forEach((x: string) => allNotes.add(x)) } }
+  }
+  const notes = new Map<string, any>()
+  const nl = Array.from(allNotes)
+  for (let i = 0; i < nl.length; i += 100) {
+    const d = await post('/crm/v3/objects/notes/batch/read', { properties: ['hs_note_body', 'hs_timestamp', 'hubspot_owner_id'], inputs: nl.slice(i, i + 100).map(id => ({ id })) })
+    for (const n of d.results || []) notes.set(String(n.id), n.properties || {})
+  }
+  const decode = (t: string) => t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
+  const strip = (t: string) => decode((t || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')).replace(/\s+/g, ' ').trim()
+  const latestNote = (cid: string) => (noteIdsOf.get(cid) || []).map(id => notes.get(id)).filter(Boolean)
+    .map((p: any) => ({ p, t: Date.parse(p.hs_timestamp || '') || 0, body: strip(p.hs_note_body) }))
+    .filter(x => x.body && x.p.hubspot_owner_id).sort((a, b) => b.t - a.t)[0] || null
+
+  type Agg = { booked: boolean; held: boolean; confirmed: boolean; noShow: boolean; upcoming: boolean; heldAt: number; bookedMeetingAt: number; bookedAt: number; internalNotes: string; owner: string }
+  const agg = new Map<string, Agg>()
+  const now = Date.now()
+  meetings.forEach((p, mid) => {
+    const outcome = String(p.hs_meeting_outcome || '').toUpperCase()
+    if (outcome === 'CANCELED' || outcome === 'RESCHEDULED') return
+    const startAt = Date.parse(p.hs_meeting_start_time || p.hs_timestamp || '') || 0
+    const createdAt = Date.parse(p.hs_createdate || '') || 0
+    const isBooked = createdAt >= startMs && createdAt < endMs
+    const inStartRange = startAt >= startMs && startAt < endMs
+    const isHeld = inStartRange && startAt < now && outcome !== 'NO_SHOW'
+    const isNoShow = inStartRange && outcome === 'NO_SHOW'
+    for (const cid of contactsOf.get(mid) || []) {
+      if (!contacts.has(cid)) continue
+      const a = agg.get(cid) || { booked: false, held: false, confirmed: false, noShow: false, upcoming: false, heldAt: 0, bookedMeetingAt: 0, bookedAt: 0, internalNotes: '', owner: '' }
+      if (isBooked && outcome !== 'NO_SHOW') { a.booked = true; if (createdAt >= a.bookedAt) { a.bookedAt = createdAt; a.bookedMeetingAt = startAt } if (startAt > now) a.upcoming = true }
+      if (isHeld) { a.held = true; if (outcome === 'COMPLETED') a.confirmed = true; if (startAt >= a.heldAt) { a.heldAt = startAt; a.owner = ownerMap[String(p.hubspot_owner_id)] || a.owner } }
+      if (isNoShow) a.noShow = true
+      const inotes = strip(p.hs_internal_meeting_notes)
+      if (inotes && !a.internalNotes) a.internalNotes = inotes
+      agg.set(cid, a)
+    }
+  })
+
+  const details: any[] = []
+  agg.forEach((a, cid) => {
+    if (!a.booked && !a.held && !a.noShow) return
+    const c = contacts.get(cid)
+    const ln = a.internalNotes ? null : latestNote(cid)
+    const status = a.held ? (a.confirmed ? 'completed' : 'held') : a.noShow ? 'no_show' : (a.upcoming ? 'upcoming' : 'held')
+    const sourceCat = c.lead_source_category || ''
+    details.push({
+      id: cid,
+      name: [c.firstname, c.lastname].filter(Boolean).join(' ') || '—',
+      company: c.company || '—', jobTitle: c.jobtitle || '—',
+      message: (c.message || '').trim().slice(0, 600), platformTools: (c.platform_tools || '').trim(),
+      ads: sourceCat === 'Paid Campaigns' || sourceCat === 'Paid Search / Paid Social',
+      formType: String(c.lead_form_type || ''), createdVia: String(c.hs_object_source_detail_1 || ''),
+      booked: a.booked, held: a.held, status,
+      meetingAt: new Date(a.held ? a.heldAt : (a.bookedMeetingAt || a.heldAt)).toISOString(),
+      bookedAt: a.bookedAt ? new Date(a.bookedAt).toISOString() : null,
+      notes: (a.internalNotes || ln?.body || '').slice(0, 420),
+      noteBy: a.internalNotes ? a.owner : (ownerMap[String(ln?.p.hubspot_owner_id)] || ''),
+      noteAt: !a.internalNotes && ln?.t ? new Date(ln.t).toISOString() : null,
+    })
+  })
+  const heldRows = details.filter(d => d.held)
+  return {
+    booked: details.filter(d => d.booked).length,
+    completed: heldRows.length,
+    completed_confirmed: heldRows.filter(d => d.status === 'completed').length,
+    held_unconfirmed: heldRows.filter(d => d.status === 'held').length,
+    no_show: details.filter(d => d.status === 'no_show').length,
+    upcoming: details.filter(d => d.booked && !d.held && d.status === 'upcoming').length,
+    details,
+  }
+}
+
 async function computeGET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const start = searchParams.get('start')
@@ -336,7 +475,7 @@ async function computeGET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v12_all' : 'v12'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v14_all' : 'v14'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
 
@@ -908,6 +1047,13 @@ async function computeGET(req: NextRequest) {
       }
     }
 
+    // Activity-based meetings for the period (MQL page only)
+    let meetingsActivity: any = null
+    if (mode !== 'all') {
+      try { meetingsActivity = await fetchMeetingActivity(apiKey, startMs, endMs, ownerMap) }
+      catch (e) { console.warn('[mqls] meeting activity skipped:', (e as Error).message) }
+    }
+
     // Meetings-based Demo Booked / Demo Completed (MQL page only; skipped for the all-leads view)
     let meetingsFunnel: any = null
     if (mode !== 'all' && meetingContactDetails.length) {
@@ -983,6 +1129,7 @@ async function computeGET(req: NextRequest) {
       by_form_type_contains: byFormTypeContains,
       partner_retagged: partnerRetagged,
       meetings_funnel: meetingsFunnel,
+      meetings_activity: meetingsActivity,
       form_type_breakdown: formTypeBreakdown,
       by_source_category: bySourceCategory,
       by_source_funnel: bySourceFunnel,
@@ -1054,7 +1201,7 @@ export async function GET(req: NextRequest) {
   const slim = searchParams.get('slim') === '1'
   const includePipeline = searchParams.get('includePipeline') === '1'
   const includeClosedWon = searchParams.get('includeClosedWon') === '1'
-  const prefix = `${mode === 'all' ? 'v12_all' : 'v12'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const prefix = `${mode === 'all' ? 'v14_all' : 'v14'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
   const out = (r: any) => {
     if (!slim) return NextResponse.json(r)
     const { contacts_by_priority, ...rest } = r

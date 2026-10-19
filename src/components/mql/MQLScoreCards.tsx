@@ -14,13 +14,9 @@ type Props = {
   /** Month-to-date total MQLs (live from HubSpot, calendar month up to today) */
   monthToDateTotal?: number | null
   /** Leads with a meeting booked in the selected period — shown in the Meeting Booked card's hover list. */
-  meetingContacts?: MeetingContact[]
+  meetingContacts?: MeetingRow[]
 }
 
-export type MeetingContact = {
-  id: string; name?: string; company?: string; jobTitle?: string; message?: string; platformTools?: string
-  owner?: string; interaction?: { latestMeeting?: string | null } | null
-}
 
 function formatValue(value: string, unit: 'number' | 'percent'): string {
   if (!value && value !== '0') return '—'
@@ -140,11 +136,11 @@ function fmtMeetingDate(iso?: string | null): string {
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function MeetingBookedCard({ value, prevValue, contacts }: { value: string; prevValue: string; contacts: MeetingContact[] }) {
+function MeetingBookedCard({ value, prevValue, contacts }: { value: string; prevValue: string; contacts: MeetingRow[] }) {
   const delta = getDelta(value, prevValue)
   const hasValue = value !== '' && value !== undefined
   const total = parseFloat(value) || 0
-  const rows = [...contacts].sort((a, b) => (b.interaction?.latestMeeting || '').localeCompare(a.interaction?.latestMeeting || ''))
+  const rows = [...contacts].sort((a, b) => (b.bookedAt || '').localeCompare(a.bookedAt || ''))
 
   return (
     <div className={cn(CARD_CLS, 'hover:z-40 focus-within:z-40')} tabIndex={0}>
@@ -158,38 +154,12 @@ function MeetingBookedCard({ value, prevValue, contacts }: { value: string; prev
       <DeltaPill delta={delta} suffix="WoW" />
       {prevValue && <p className="caption mt-1">prev {prevValue}</p>}
       {rows.length > 0 && (
-        <p className="caption mt-1.5 text-[#2563EB] underline decoration-dotted underline-offset-2">hover for companies</p>
+        <p className="caption mt-1.5 text-[#2563EB] underline decoration-dotted underline-offset-2">hover to see who</p>
       )}
-
-      {/* Hover list — company + use case for each booked meeting. pt-2 (not margin) keeps the hover bridge unbroken. */}
+      {/* Hover list - leads whose meeting was BOOKED in the selected dates. pt-2 (not margin) keeps the hover bridge unbroken. */}
       {rows.length > 0 && (
-        <div className="hidden group-hover:block group-focus-within:block absolute right-0 top-full z-50 pt-2 w-[380px] max-w-[85vw]">
-          <div className="rounded-[14px] border border-[#D4CBC0] bg-white shadow-[0_12px_32px_rgba(40,20,10,.18)] p-3 text-left max-h-[340px] overflow-y-auto">
-            <p className="text-[10.5px] uppercase tracking-[.06em] text-[#7A6A60] font-[600] mb-2">Meetings booked — company &amp; use case</p>
-            <ul className="space-y-2.5">
-              {rows.map(c => {
-                const uc = extractUseCase({ message: c.message, platformTools: c.platformTools })
-                const theme = classifyUseCase(uc.text)
-                const snippet = uc.text.replace(/\s+/g, ' ').slice(0, 140)
-                const when = fmtMeetingDate(c.interaction?.latestMeeting)
-                return (
-                  <li key={c.id} className="border-b border-[#EEE7DC] last:border-0 pb-2 last:pb-0">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">{c.company && c.company !== '—' ? c.company : '(no company)'}</span>
-                      {when && <span className="text-[11px] text-[#7A6A60] shrink-0">{when}</span>}
-                    </div>
-                    <p className="text-[11.5px] text-[#7A6A60] truncate">
-                      {[c.name && c.name !== '—' ? c.name : '', c.jobTitle && c.jobTitle !== '—' ? c.jobTitle : ''].filter(Boolean).join(' · ')}
-                    </p>
-                    <div className="mt-1 flex items-start gap-1.5">
-                      <span className="shrink-0 rounded-full px-2 py-[1px] text-[10.5px] font-[600] text-white" style={{ background: theme.color }}>{theme.label}</span>
-                      {snippet && theme.key !== 'none' && <span className="text-[11.5px] leading-snug text-[#2A1F1A]">{snippet}{uc.text.length > 140 ? '…' : ''}</span>}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
+        <div className="hidden group-hover:block group-focus-within:block absolute right-0 top-full z-50 pt-2 w-[440px] max-w-[88vw]">
+          <MeetingListBody rows={rows} title="Meetings booked in this period - company, use case and latest SDR note" footer="Counts unique leads from marketing forms (not Agent Studio-only users) whose meeting was booked in the selected dates, whenever the lead itself came in." />
         </div>
       )}
     </div>
@@ -320,7 +290,7 @@ export function OtherMQLMetrics({ data, prevData, monthToDateTotal, prevMonthToD
    ========================================================================= */
 
 export type MeetingRow = {
-  ads?: boolean
+  ads?: boolean; formType?: string; bookedAt?: string | null; booked?: boolean; held?: boolean
   id: string; name?: string; company?: string; jobTitle?: string; message?: string; platformTools?: string
   status: 'completed' | 'held' | 'no_show' | 'upcoming' | 'canceled'; meetingAt?: string | null
   title?: string; notes?: string; noteBy?: string; noteAt?: string | null; outcome?: string
@@ -373,11 +343,14 @@ function MeetingListBody({ rows, title, footer }: { rows: MeetingRow[]; title: s
                 <li key={c.id} className="border-b border-[#EEE7DC] last:border-0 pb-2.5 last:pb-0">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">{c.company && c.company !== '—' ? c.company : '(no company)'}</span>
-                    <span className={`shrink-0 rounded-full px-2 py-[1px] text-[10px] font-[600] ${st.cls}`}>{st.label}{when ? ` · ${when}` : ''}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-[1px] text-[10px] font-[600] ${st.cls}`}>{st.label}</span>
                   </div>
                   <p className="text-[11.5px] text-[#7A6A60] truncate">
                     {[c.name && c.name !== '—' ? c.name : '', c.jobTitle && c.jobTitle !== '—' ? c.jobTitle : ''].filter(Boolean).join(' · ')}
                   </p>
+                  {(c.bookedAt || when) && (
+                    <p className="text-[10.5px] text-[#9A8C82]">{c.bookedAt ? `Booked ${fmtMeetingDate(c.bookedAt)}` : ''}{c.bookedAt && when ? ' · ' : ''}{when ? `Meeting ${when}` : ''}{c.formType ? ` · ${c.formType.split(';')[0]}` : ''}</p>
+                  )}
                   <div className="mt-1 flex items-start gap-1.5">
                     <span className="shrink-0 rounded-full px-2 py-[1px] text-[10.5px] font-[600] text-white" style={{ background: theme.color }}>{theme.label}</span>
                     {snippet && theme.key !== 'none' && <span className="text-[11.5px] leading-snug text-[#2A1F1A]">{snippet}{uc.text.length > 140 ? '…' : ''}</span>}
@@ -474,11 +447,15 @@ export function MQLLeadStatusFunnel({ data }: { data: WeekMetrics }) {
     if (raw) leadStatus = JSON.parse(raw)
   } catch {}
 
-  let meetings: { booked: number; completed: number; completed_confirmed: number; held_unconfirmed: number; no_show: number; upcoming: number; canceled_only: number; details: MeetingRow[] } | null = null
+  // Activity-based meetings for the selected dates (booked in the period / held in the period). Falls back to the lead-cohort
+  // meetings_funnel, then to lead status, only if unavailable.
+  let meetings: { booked: number; completed: number; completed_confirmed: number; held_unconfirmed: number; no_show: number; upcoming: number; canceled_only?: number; details: MeetingRow[] } | null = null
   try {
-    const raw = data['meetings_funnel']?.value
+    const raw = data['meetings_activity']?.value || data['meetings_funnel']?.value
     if (raw && raw !== 'null') meetings = JSON.parse(raw)
   } catch {}
+  const bookedRows = meetings ? meetings.details.filter(d => d.booked !== false) : []
+  const completedRows = meetings ? meetings.details.filter(d => d.status === 'completed' || d.status === 'held') : []
 
   // Source split under the two meeting-based rows must come from the same meetings population (not hs_lead_status).
   if (meetings) {
@@ -488,8 +465,8 @@ export function MQLLeadStatusFunnel({ data }: { data: WeekMetrics }) {
     }
     breakdown = {
       ...breakdown,
-      demo_booked: split(meetings.details),
-      demo_completed: split(meetings.details.filter(d => d.status === 'completed' || d.status === 'held')),
+      demo_booked: split(bookedRows),
+      demo_completed: split(completedRows),
     }
   }
 
@@ -500,14 +477,14 @@ export function MQLLeadStatusFunnel({ data }: { data: WeekMetrics }) {
     // hs_lead_status - falls back to the lead-status numbers only if the meetings data is unavailable.
     {
       label: 'Demo Booked', value: meetings ? meetings.booked : (leadStatus.demo_booked || 0), color: '#B9822E', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_booked',
-      hoverRows: meetings ? meetings.details : undefined, hoverTitle: 'Demo booked - meetings on the lead, with company, use case and SDR notes',
+      hoverRows: meetings ? bookedRows : undefined, hoverTitle: 'Demo booked - meetings booked in this period, with company, use case and latest SDR note',
     },
     {
       label: 'Demo Completed', value: meetings ? meetings.completed : (leadStatus.demo_completed || 0), color: '#A06E5B', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'demo_completed',
-      hoverRows: meetings ? meetings.details.filter(d => d.status === 'completed' || d.status === 'held') : undefined,
-      hoverTitle: 'Demo completed - meetings that took place (booked meeting time has passed), with the SDR\'s latest note',
+      hoverRows: meetings ? completedRows : undefined,
+      hoverTitle: 'Demo completed - meetings that took place in this period, with the SDR\'s latest note',
       hoverFooter: meetings
-        ? `${meetings.completed_confirmed} confirmed Completed in HubSpot; ${meetings.held_unconfirmed} took place but nobody set the meeting outcome (counted, since they were not cancelled, rescheduled or marked no-show). Excluded: ${meetings.no_show} no-show, ${meetings.canceled_only} cancelled/rescheduled only, ${meetings.upcoming} upcoming.`
+        ? `${meetings.completed_confirmed} confirmed Completed in HubSpot; ${meetings.held_unconfirmed} took place but nobody set the meeting outcome (counted, since they were not cancelled, rescheduled or marked no-show). Unique leads from marketing forms; counted in the period the meeting happened, whenever the lead came in.`
         : undefined,
     },
     { label: 'Junk/Unqualified', value: leadStatus.junk || 0, color: '#BE4A3C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'junk' },

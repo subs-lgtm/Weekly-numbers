@@ -58,6 +58,7 @@ function MQLPageInner() {
     lead_status_funnel?: { total: number; working_plus: number; demo_booked_plus: number; demo_completed_plus: number; associated_with_deal: number }
     contacts_by_priority?: ContactsByPriority
     meetings_funnel?: any
+    meetings_activity?: any
     by_source_category?: Record<string, number>
     by_source_funnel?: Record<string, { total: number; mql: number; sql: number; opportunity: number; customer: number; working: number; pipelineValue: number }>
   } | null>(null)
@@ -92,8 +93,8 @@ function MQLPageInner() {
     return list
   }, [hubspotData])
 
-  // Leads whose HubSpot record has a meeting (hs_latest_meeting_activity) - same population as the Meeting Booked count.
-  const meetingContacts = useMemo(() => allContacts.filter(c => c.interaction?.latestMeeting), [allContacts])
+  // Leads whose meeting was BOOKED in the selected dates (activity-based) - same population as the Meeting Booked card.
+  const meetingContacts = useMemo(() => (hubspotData?.meetings_activity?.details || []).filter((d: any) => d.booked), [hubspotData])
 
   const handleHubSpotData = useCallback((d: typeof hubspotData) => {
     setHubspotData(d)
@@ -117,7 +118,7 @@ function MQLPageInner() {
           setPrevHubspotData({
             total: json.total || 0,
             qualified_mqls: json.qualified_mqls || 0,
-            meeting_booked: json.funnel?.meeting_booked || 0,
+            meeting_booked: json.meetings_activity?.booked ?? (json.funnel?.meeting_booked || 0),
             funnel: json.funnel,
           })
         }
@@ -178,8 +179,9 @@ function MQLPageInner() {
         updatedAt: null,
       }
       d['meeting_booked'] = {
-        value: hubspotData.meeting_booked.toString(),
-        notes: 'Live from HubSpot (hs_latest_meeting_activity)',
+        // Activity-based: unique marketing-form leads whose meeting was booked in the selected dates (falls back to the old cohort count).
+        value: (hubspotData.meetings_activity?.booked ?? hubspotData.meeting_booked).toString(),
+        notes: 'Live from HubSpot (meetings booked in period)',
         updatedBy: 'hubspot',
         updatedAt: null,
       }
@@ -254,6 +256,12 @@ function MQLPageInner() {
       d['meetings_funnel'] = {
         value: JSON.stringify(hubspotData.meetings_funnel || null),
         notes: 'Live from HubSpot (Meetings object)',
+        updatedBy: 'hubspot',
+        updatedAt: null,
+      }
+      d['meetings_activity'] = {
+        value: JSON.stringify(hubspotData.meetings_activity || null),
+        notes: 'Live from HubSpot (Meetings object, by activity in period)',
         updatedBy: 'hubspot',
         updatedAt: null,
       }

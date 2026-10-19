@@ -542,3 +542,11 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     under Demo Booked/Completed now computed from the same meetings population (was wrongly from hs_lead_status). Same logic for any week / month / custom range (API takes start/end).
     Known overcount: no-shows are not recorded as outcomes either, so HELD includes no-shows (lead status flags ~12 of Sep's meeting leads as Intro Call No-Show / Demo no show).
     Sep: MQL 262, booked 80, completed 66 (0 confirmed), canceled-only 13, upcoming 1. Aug: 279 / 116 / 100 (1 confirmed). Week 5-11 Oct: 51 / 4 / 4.
+46. **2026-10-19 — Meeting Booked / Demo Booked / Demo Completed are now ACTIVITY-BASED (by user choice), not lead-cohort-based.** Trigger: user listed 4 meetings booked 12-18 Oct (Simar/Nordic Capital,
+    Kartik/KnackLabs, Mihir/Wipro, Shraddha/LTM) and the dashboard showed 0, because all four LEADS were created before 12 Oct (cohort logic counts meetings only for leads created in the range; Mihir is a Playbook
+    lead so never counted). New `fetchMeetingActivity` in `/api/hubspot/mqls` (MQL mode only, cache `v14`; response field `meetings_activity`): searches HubSpot meetings by `hs_createdate` (booked) and `hs_timestamp`
+    (held) in [start,end); Booked = unique leads with a meeting CREATED in range (not CANCELED/RESCHEDULED); Completed = unique leads with a meeting whose START falls in range, already past, not cancelled/rescheduled/no-show
+    (outcome is almost never set, so these are "held"; confirmed COMPLETED reported separately). Population filter `isMarketingLead`: contact has a form other than Agent Studio-only, not @lyzr.ai, not test/internal
+    (outbound/Apollo/Agent Studio-only contacts excluded - the sales team books many meetings with those: 111 raw vs 14 marketing leads for 12-18 Oct). Result 12-18 Oct: booked 14, held 14, upcoming 5 (5-11 Oct: 11/13; Sep: 104/126).
+    Used by: MQLs page Meeting Booked card + Demo Booked/Demo Completed funnel rows (+ source split + hovers), MQL->Demo rate, Summary page Meetings Booked card (value, prev, hover). Old cohort fields (`meetings_funnel`, funnel.meeting_booked) still returned as fallback.
+    Mixed semantics note: funnel rows show "% of MQL" against the cohort MQL total, so it can exceed 100% for long ranges.

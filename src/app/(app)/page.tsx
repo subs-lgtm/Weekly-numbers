@@ -73,8 +73,8 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
       fetch(`/api/hubspot/gsi-leads?start=${prevWeek}&end=${prevWeekEnd}`).then(r => r.json()).catch(() => null),
     ]).then(([curr, prev, allCurr, allPrev, gsi, prevGsi]) => {
       if (curr && !curr.error) {
-        const mf = curr.meetings_funnel
-        setMeetings(mf ? { rows: mf.details || [], awaiting: mf.held_unconfirmed || 0, noShow: mf.no_show || 0 } : null)
+        const mf = curr.meetings_activity
+        setMeetings(mf ? { rows: (mf.details || []).filter((d: any) => d.booked), awaiting: mf.held_unconfirmed || 0, noShow: mf.no_show || 0 } : null)
         setData(d => ({
           ...d,
           'mqls:mqls_total': String(curr.total || 0),
@@ -85,7 +85,7 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
           'mqls:opportunity_count': String(curr.funnel?.opportunity || 0),
           'mqls:customer_count': String(curr.funnel?.customer || 0),
           'mqls:demo_no_show': String(curr.funnel?.demo_no_show || 0),
-          'mqls:meeting_booked': String(curr.funnel?.meeting_booked || 0),
+          'mqls:meeting_booked': String(curr.meetings_activity?.booked ?? (curr.funnel?.meeting_booked || 0)),
           'ads:total_mqls': String(curr.paid_mqls || 0),
         }))
       }
@@ -100,7 +100,7 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
           'mqls:opportunity_count': String(prev.funnel?.opportunity || 0),
           'mqls:customer_count': String(prev.funnel?.customer || 0),
           'mqls:demo_no_show': String(prev.funnel?.demo_no_show || 0),
-          'mqls:meeting_booked': String(prev.funnel?.meeting_booked || 0),
+          'mqls:meeting_booked': String(prev.meetings_activity?.booked ?? (prev.funnel?.meeting_booked || 0)),
           'ads:total_mqls': String(prev.paid_mqls || 0),
         }))
       }
@@ -450,8 +450,8 @@ function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string
                   <p className="mt-1.5 text-[10px] text-[#2563EB] underline decoration-dotted underline-offset-2">hover to see who</p>
                   <SummaryMeetingsPopover
                     rows={meetings.rows}
-                    title="Meetings booked - company, use case and latest SDR note"
-                    footer={meetings.awaiting > 0 ? `${meetings.awaiting} meeting${meetings.awaiting === 1 ? ' has' : 's have'} taken place but the outcome is not set in HubSpot.` : undefined}
+                    title="Meetings booked in this period - company, use case and latest SDR note"
+                    footer="Unique leads from marketing forms (not Agent Studio-only users) whose meeting was booked in the selected dates, whenever the lead itself came in."
                   />
                 </>
               )}
