@@ -315,6 +315,20 @@ async function fetchMeetingDetails(apiKey: string, contactIds: string[], ownerMa
   return out
 }
 
+// Which playbook / asset a Playbook Download lead took. HubSpot keeps it in the form-submission event name
+// ("How to take agents to production playbook | Lyzr AI: #agents_to_production .elementor-form"); LinkedIn lead-gen leads
+// instead carry it in the campaign name ("Agent in Production Whitepaper|Technical Heads|Lead gen - 19 Aug'26"). Falls back to the page slug.
+function playbookOf(p: any): string {
+  if (!String(p.lead_form_type || '').split(';').map((x: string) => x.trim()).includes('Playbook Download')) return ''
+  const ev = String(p.recent_conversion_event_name || '').trim()
+  if (ev) return ev.split(' | ')[0].replace(/:\s*#.*$/, '').replace(/:\s*[^:]*(template form|\.elementor-form|form)\s*$/i, '').trim()
+  // A LinkedIn campaign name only counts as a playbook name when it actually names an asset (not an ad audience like "Retargeting Aud").
+  const camp = String(p.lead_campaign_name || '').split('|')[0].trim()
+  if (camp && /whitepaper|playbook|checklist|guide|ebook|e-book|report|blueprint|use cases|template/i.test(camp)) return camp
+  const m = String(p.hs_analytics_last_url || '').match(/\/(?:playbook|template)\/([^/?#]+)/i)
+  return m ? m[1].replace(/-/g, ' ') : 'name not recorded in HubSpot'
+}
+
 // Marketing-lead filter for the meeting activity counts: the contact came through a marketing form other than Agent Studio
 // (Book a Demo, Playbook, Contact Us, Partner Form, GSI and SI, Webinar ...). Excludes outbound / Apollo / Agent Studio-only
 // product users (the sales team books many meetings with those), and internal / test contacts.
@@ -377,7 +391,7 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
   const cids = Array.from(new Set(Array.from(contactsOf.values()).flat()))
   const contacts = new Map<string, any>()
   for (let i = 0; i < cids.length; i += 100) {
-    const d = await post('/crm/v3/objects/contacts/batch/read', { properties: ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'hs_object_source_detail_1'], inputs: cids.slice(i, i + 100).map(id => ({ id })) })
+    const d = await post('/crm/v3/objects/contacts/batch/read', { properties: ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'hs_object_source_detail_1', 'hs_analytics_source', 'utm_source', 'utm_medium', 'recent_conversion_event_name', 'lead_campaign_name', 'hs_analytics_last_url'], inputs: cids.slice(i, i + 100).map(id => ({ id })) })
     for (const c of d.results || []) if (isMarketingLead(c.properties || {})) contacts.set(String(c.id), c.properties || {})
   }
 
@@ -439,6 +453,7 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
       message: (c.message || '').trim().slice(0, 600), platformTools: (c.platform_tools || '').trim(),
       ads: sourceCat === 'Paid Campaigns' || sourceCat === 'Paid Search / Paid Social',
       formType: String(c.lead_form_type || ''), createdVia: String(c.hs_object_source_detail_1 || ''),
+      channel: resolveChannel(c), playbook: playbookOf(c), campaign: String(c.lead_campaign_name || '').trim(),
       booked: a.booked, held: a.held, status,
       meetingAt: new Date(a.held ? a.heldAt : (a.bookedMeetingAt || a.heldAt)).toISOString(),
       bookedAt: a.bookedAt ? new Date(a.bookedAt).toISOString() : null,
@@ -479,7 +494,7 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
     }
     throw new Error(`HubSpot ${url} failed: ${last}`)
   }
-  const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity', 'hs_analytics_source', 'utm_source', 'utm_medium']
+  const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity', 'hs_analytics_source', 'utm_source', 'utm_medium', 'recent_conversion_event_name', 'lead_campaign_name', 'hs_analytics_last_url']
   const toRow = (id: string, c: any, extra: any = {}) => {
     const src = c.lead_source_category || ''
     return {
@@ -487,7 +502,7 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
       message: (c.message || '').trim().slice(0, 600), platformTools: (c.platform_tools || '').trim(),
       ads: src === 'Paid Campaigns' || src === 'Paid Search / Paid Social', formType: String(c.lead_form_type || ''),
       // Acquisition channel (paid signals first, then lead source category, then HubSpot original source) - same rule as the Executive Dashboard.
-      channel: resolveChannel(c), ...extra,
+      channel: resolveChannel(c), playbook: playbookOf(c), campaign: String(c.lead_campaign_name || '').trim(), ...extra,
     }
   }
 
@@ -599,7 +614,7 @@ async function computeGET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v17_all' : 'v17'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v20_all' : 'v20'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
 
@@ -1335,7 +1350,7 @@ export async function GET(req: NextRequest) {
   const slim = searchParams.get('slim') === '1'
   const includePipeline = searchParams.get('includePipeline') === '1'
   const includeClosedWon = searchParams.get('includeClosedWon') === '1'
-  const prefix = `${mode === 'all' ? 'v17_all' : 'v17'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const prefix = `${mode === 'all' ? 'v20_all' : 'v20'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
   const out = (r: any) => {
     if (!slim) return NextResponse.json(r)
     const { contacts_by_priority, ...rest } = r

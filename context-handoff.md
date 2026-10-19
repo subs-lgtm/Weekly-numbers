@@ -584,3 +584,8 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     (WoW MQL->SQL %), `MQLConversionTrendChart` and `mqls/monthly-trends/page.tsx` (sql + opp columns) now read `pipeline_activity.sql.count` / `.opportunity.count` (fallback: cohort funnel). New weekly series
     (MQL->SQL%): Sep 7 9/84 11%, Sep 14 9/62 15%, Sep 21 7/49 14%, Sep 28 4/43 9%, Oct 5 4/51 8%, Oct 12 8/43 19% (was 5/8/6/0/2/0%). Intentionally NOT changed: `SQLToOppConversionChart` / sql-to-opportunity-monthly
     (documented eventual-conversion cohort metric), `WoWFunnelTable` drill-down list, `meetings-tracker` page (separate API).
+53. **2026-10-19 — Leads-page Lead Funnel: channel source + playbook per stage, with who-hover.** User: show which channel the SQL / Demo Booked / Demo Completed / Opportunity leads came from, and which playbook for Playbook leads.
+    Route (`fetchPipelineActivity` rows + `fetchMeetingActivity` rows, cache `v20`) now returns `channel` (`resolveChannel`), `playbook` (`playbookOf`) and `campaign`. `playbookOf`: Playbook Download leads only; name from
+    `recent_conversion_event_name` (cut at " | ", drop ": #..form-id" / "template form" suffix), else the LinkedIn lead-gen `lead_campaign_name` first segment IF it names an asset (whitepaper/playbook/checklist/guide/report/blueprint/use cases/template),
+    else the /playbook|template/ URL slug, else "name not recorded in HubSpot". `LeadFunnelCard` (prop `activity.lists`) shows under each of the four stages "Source: 2 Direct . 1 Paid Campaigns . Playbook: X, Y" and a hover list (`LeadListBody`)
+    with channel chip + meta. 12-18 Oct: SQL 2 (1 Paid, 1 Direct; Lux Collective = "Agent in Production Whitepaper"), Demo Booked 6, Demo Completed 5, Opp 1 (Direct).

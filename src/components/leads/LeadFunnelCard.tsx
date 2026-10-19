@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { Filter, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { LeadListBody, type HoverLead } from '@/components/mql/MQLScoreCards'
 
 type LeadContact = {
   id: string
@@ -27,7 +28,25 @@ type LeadContact = {
 type Props = {
   contacts: LeadContact[]
   /** Activity-based counts for informational leads (those that reached the stage in the selected dates, whenever the lead came in). */
-  activity?: { sql: number; opportunity: number; demoBooked: number; demoCompleted: number } | null
+  activity?: {
+    sql: number; opportunity: number; demoBooked: number; demoCompleted: number
+    /** Who is behind each activity-based stage, with channel + playbook, for the source line and hover list */
+    lists?: Partial<Record<'sql' | 'opportunity' | 'demoBooked' | 'demoCompleted', HoverLead[]>>
+  } | null
+}
+
+const STAGE_KEY: Record<string, 'sql' | 'opportunity' | 'demoBooked' | 'demoCompleted'> = { SQL: 'sql', Opportunity: 'opportunity', 'Demo Booked': 'demoBooked', 'Demo Completed': 'demoCompleted' }
+const STAGE_TITLE: Record<string, string> = {
+  sql: 'SQLs - informational leads that reached SQL in this period, with channel and playbook',
+  opportunity: 'Opportunities - informational leads with a marketing-sourced Studio deal created in this period',
+  demoBooked: 'Demos booked in this period',
+  demoCompleted: 'Demos that took place in this period (outcome mostly not set in HubSpot)',
+}
+
+const tally = (vals: (string | undefined)[]) => {
+  const m = new Map<string, number>()
+  for (const v of vals) if (v) m.set(v, (m.get(v) || 0) + 1)
+  return Array.from(m.entries()).sort((a, b) => b[1] - a[1])
 }
 
 const CARD_CLS = 'rounded-[20px] border border-[#D4CBC0] bg-white p-6 shadow-[0_4px_20px_rgba(40,20,10,.07)]'
@@ -180,9 +199,19 @@ export function LeadFunnelCard({ contacts, activity }: Props) {
 
             const dropVal = i === 0 ? null : 100 - convVal
 
+            const key = STAGE_KEY[stage.label]
+            const rows = key ? activity?.lists?.[key] : undefined
+            const hasRows = !!rows && rows.length > 0
+            const channels = hasRows ? tally(rows!.map(r => r.channel || 'Unattributed')) : []
+            const playbooks = hasRows ? tally(rows!.map(r => r.playbook)) : []
+
             return (
-              <div key={stage.label} className="grid grid-cols-[120px_1fr_60px_100px_80px] gap-4 items-center px-2 py-0.5 text-[13px]">
-                <div className="font-[600] text-[#2A1F1A]">{stage.label}</div>
+              <div key={stage.label} className={cn('relative', hasRows && 'group/stage hover:z-40 focus-within:z-40')} tabIndex={hasRows ? 0 : undefined}>
+              <div className="grid grid-cols-[120px_1fr_60px_100px_80px] gap-4 items-center px-2 py-0.5 text-[13px]">
+                <div className="font-[600] text-[#2A1F1A]">
+                  {stage.label}
+                  {hasRows && <span className="block text-[10px] font-[500] text-[#2563EB] underline decoration-dotted underline-offset-2">hover for who</span>}
+                </div>
                 <div className="h-6 rounded-md bg-[#F9F5F1] overflow-hidden flex items-center relative">
                   <div
                     className="h-full rounded-md flex items-center justify-end px-3 transition-all duration-500 text-[11px] font-[700] text-white"
@@ -201,6 +230,18 @@ export function LeadFunnelCard({ contacts, activity }: Props) {
                 <div className="text-right text-[#7A6A60] font-[500]">
                   {dropVal === null ? '—' : `${dropVal}%`}
                 </div>
+              </div>
+              {hasRows && (
+                <div className="px-2 pl-[136px] pb-1 text-[10.5px] leading-snug text-[#7A6A60]">
+                  <span>Source: {channels.map(([c, n]) => `${n} ${c}`).join(' · ')}</span>
+                  {playbooks.length > 0 && <span className="text-[#6B4C4C]"> · Playbook: {playbooks.map(([p, n]) => `${p}${n > 1 ? ` (${n})` : ''}`).join(', ')}</span>}
+                </div>
+              )}
+              {hasRows && (
+                <div className="hidden group-hover/stage:block group-focus-within/stage:block absolute left-0 sm:left-[130px] top-full z-50 pt-1 w-[440px] max-w-[88vw]">
+                  <LeadListBody rows={rows!} title={STAGE_TITLE[key]} footer="Informational leads (Playbook, Contact Us, Partner ...), counted in the period the stage happened, whenever the lead came in." />
+                </div>
+              )}
               </div>
             )
           })}

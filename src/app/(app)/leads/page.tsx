@@ -6,6 +6,7 @@ import { SECTION_MAP } from '@/lib/metrics-config'
 import { useWeek } from '@/lib/week-context'
 import { useWeeklyMetrics, usePrevWeekMetrics } from '@/hooks/useWeeklyMetrics'
 import { LeadFunnelCard } from '@/components/leads/LeadFunnelCard'
+import { CHANNEL_CLS, type HoverLead } from '@/components/mql/MQLScoreCards'
 import { LeadCategoriesPerformance } from '@/components/leads/LeadCategoriesPerformance'
 import { LeadsComparisonCards } from '@/components/leads/LeadsComparisonCards'
 import { LeadsWoWChart } from '@/components/leads/LeadsWoWChart'
@@ -67,7 +68,7 @@ function LeadsPageInner() {
 
   // Activity-based SQL / Demo / Opportunity for informational leads (same engine as the Summary + MQL pages). One extra
   // call for the selected dates; it shares the server cache with the MQL page.
-  const [funnelActivity, setFunnelActivity] = useState<{ sql: number; opportunity: number; demoBooked: number; demoCompleted: number } | null>(null)
+  const [funnelActivity, setFunnelActivity] = useState<{ sql: number; opportunity: number; demoBooked: number; demoCompleted: number; lists: Partial<Record<'sql' | 'opportunity' | 'demoBooked' | 'demoCompleted', HoverLead[]>> } | null>(null)
   useEffect(() => {
     let cancelled = false
     setFunnelActivity(null)
@@ -78,11 +79,25 @@ function LeadsPageInner() {
         const NOT_INFO = new Set(['Book a Demo', 'Email Form', 'Pre-Built Agents', 'Webinar', 'Agent Studio'])
         const info = (r: any) => { const f = String(r.formType || '').split(';')[0].trim(); return !!f && !NOT_INFO.has(f) }
         const m = j.meetings_activity.details || []
+        const sd = (iso?: string | null) => { if (!iso) return ''; const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
+        const lead = (r: any, meta: string): HoverLead => ({
+          id: r.id, name: r.name, company: r.company, jobTitle: r.jobTitle, message: r.message, platformTools: r.platformTools,
+          chip: r.channel || 'Unattributed', chipCls: CHANNEL_CLS[r.channel] || 'bg-[#EEE7DC] text-[#7A6A60]',
+          meta: [meta, String(r.formType || '').split(';')[0], r.playbook ? `Playbook: ${r.playbook}` : ''].filter(Boolean).join(' · '),
+          channel: r.channel || 'Unattributed', playbook: r.playbook || '',
+        })
+        const sqlRows = (j.pipeline_activity.sql?.details || []).filter(info)
+        const oppRows = (j.pipeline_activity.opportunity?.details || []).filter(info)
+        const bookedRows = m.filter((r: any) => r.booked && info(r))
+        const doneRows = m.filter((r: any) => (r.status === 'completed' || r.status === 'held') && info(r))
         setFunnelActivity({
-          sql: (j.pipeline_activity.sql?.details || []).filter(info).length,
-          opportunity: (j.pipeline_activity.opportunity?.details || []).filter(info).length,
-          demoBooked: m.filter((r: any) => r.booked && info(r)).length,
-          demoCompleted: m.filter((r: any) => (r.status === 'completed' || r.status === 'held') && info(r)).length,
+          sql: sqlRows.length, opportunity: oppRows.length, demoBooked: bookedRows.length, demoCompleted: doneRows.length,
+          lists: {
+            sql: sqlRows.map((r: any) => lead(r, [r.via === 'opportunity' ? 'Moved to Opportunity' : 'Entered SQL', sd(r.at)].filter(Boolean).join(' '))),
+            opportunity: oppRows.map((r: any) => lead(r, [r.dealName, r.dealAmount ? '$' + Math.round(r.dealAmount).toLocaleString() : '', r.dealStage, sd(r.at)].filter(Boolean).join(' · '))),
+            demoBooked: bookedRows.map((r: any) => lead(r, `Booked ${sd(r.bookedAt)} · Meeting ${sd(r.meetingAt)}`)),
+            demoCompleted: doneRows.map((r: any) => lead(r, `Meeting ${sd(r.meetingAt)}${r.status === 'completed' ? ' · confirmed completed' : ' · outcome not set'}`)),
+          },
         })
       })
       .catch(() => {})

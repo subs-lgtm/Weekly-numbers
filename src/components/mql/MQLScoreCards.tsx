@@ -303,7 +303,7 @@ export type MeetingRow = {
   status: 'completed' | 'held' | 'no_show' | 'upcoming' | 'canceled'; meetingAt?: string | null
   title?: string; notes?: string; noteBy?: string; noteAt?: string | null; outcome?: string
 }
-const CHANNEL_CLS: Record<string, string> = {
+export const CHANNEL_CLS: Record<string, string> = {
   'Paid Campaigns': 'bg-[#EFE3E0] text-[#6B4C4C]', Direct: 'bg-[#F6E3DE] text-[#A8483A]', 'Organic Search': 'bg-[#E1EEEE] text-[#2F6F6F]',
   Referral: 'bg-[#F3EBCB] text-[#7A6420]', Social: 'bg-[#E9E3F1] text-[#5E4A82]',
 }
@@ -361,6 +361,8 @@ export function SummaryMeetingsPopover({ rows, title, footer, align = 'left' }: 
 export type HoverLead = {
   id: string; name?: string; company?: string; jobTitle?: string; message?: string; platformTools?: string
   chip?: string; chipCls?: string; meta?: string
+  /** Acquisition channel and (for Playbook Download leads) which playbook - used for the per-stage source summary */
+  channel?: string; playbook?: string
 }
 
 export function LeadListBody({ rows, title, footer }: { rows: HoverLead[]; title: string; footer?: string }) {
