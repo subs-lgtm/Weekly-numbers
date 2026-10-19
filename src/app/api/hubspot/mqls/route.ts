@@ -335,13 +335,18 @@ function isMarketingLead(p: any): boolean {
 //               COMPLETED ones are reported separately.
 // Lead type is not filtered (a Playbook lead who books a demo counts); @lyzr.ai contacts are excluded.
 async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: number, ownerMap: Record<string, string>) {
+  // Strict: retry rate limits / 5xx with backoff and THROW if it still fails, so a transient HubSpot error can never be
+  // turned into a "0" that gets cached (the caller catches, returns null and the result is not cached).
   const post = async (url: string, body: any) => {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let last = 0
+    for (let attempt = 0; attempt < 6; attempt++) {
       const res = await fetch(`${HUBSPOT_API_BASE}${url}`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      if (res.status === 429) { await new Promise(r => setTimeout(r, 1100)); continue }
-      return res.ok ? res.json() : { results: [] }
+      if (res.ok) return res.json()
+      last = res.status
+      if (res.status === 429 || res.status >= 500) { await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); continue }
+      break
     }
-    return { results: [] }
+    throw new Error(`HubSpot ${url} failed: ${last}`)
   }
   const MP = ['hs_meeting_outcome', 'hs_meeting_start_time', 'hs_timestamp', 'hs_createdate', 'hs_meeting_title', 'hs_internal_meeting_notes', 'hubspot_owner_id']
   const searchMeetings = async (prop: 'hs_createdate' | 'hs_timestamp') => {
@@ -461,13 +466,18 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
 //                 (same deal-based rule as the Executive Dashboard: deal_source in MARKETING_DEAL_SOURCES). The contact's
 //                 own lifecycle label is never consulted.
 async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: number) {
+  // Strict: retry rate limits / 5xx with backoff and THROW if it still fails, so a transient HubSpot error can never be
+  // turned into a "0" that gets cached (the caller catches, returns null and the result is not cached).
   const post = async (url: string, body: any) => {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let last = 0
+    for (let attempt = 0; attempt < 6; attempt++) {
       const res = await fetch(`${HUBSPOT_API_BASE}${url}`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      if (res.status === 429) { await new Promise(r => setTimeout(r, 1100)); continue }
-      return res.ok ? res.json() : { results: [] }
+      if (res.ok) return res.json()
+      last = res.status
+      if (res.status === 429 || res.status >= 500) { await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); continue }
+      break
     }
-    return { results: [] }
+    throw new Error(`HubSpot ${url} failed: ${last}`)
   }
   const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity']
   const toRow = (id: string, c: any, extra: any = {}) => {
@@ -554,8 +564,13 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
       }))
     })
   }
+  // A lead that moved on to Opportunity (marketing-sourced deal created in the period) is also an SQL for that period -
+  // it passed through (or skipped) the SQL stage, so SQL = entered the SQL stage OR got an Opportunity in the period.
+  const sqlById = new Map<string, any>(sqlRows.map(r => [r.id, r]))
+  for (const o of oppRows) if (!sqlById.has(o.id)) sqlById.set(o.id, { ...o, via: 'opportunity' })
+  const sqlAll = Array.from(sqlById.values())
   return {
-    sql: { count: sqlRows.length, details: sqlRows },
+    sql: { count: sqlAll.length, entered_sql_stage: sqlRows.length, via_opportunity: sqlAll.length - sqlRows.length, details: sqlAll },
     opportunity: { count: oppRows.length, deals: dealCount, value: dealValue, details: oppRows },
   }
 }
@@ -582,7 +597,7 @@ async function computeGET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v15_all' : 'v15'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v16_all' : 'v16'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
 
@@ -1290,7 +1305,9 @@ async function computeGET(req: NextRequest) {
     }
 
     // Cache the result (v2 prefix to invalidate old stale entries)
-    await setCache(`${cacheKeyPrefix}_${start}`, end, result)
+    // Don't cache a result whose meetings / pipeline activity failed to load (would pin a wrong zero for up to 7 days).
+    const activityMissing = mode !== 'all' && (meetingsActivity === null || pipelineActivity === null)
+    if (!activityMissing) await setCache(`${cacheKeyPrefix}_${start}`, end, result)
 
     return NextResponse.json(result)
   } catch (err: any) {
@@ -1316,7 +1333,7 @@ export async function GET(req: NextRequest) {
   const slim = searchParams.get('slim') === '1'
   const includePipeline = searchParams.get('includePipeline') === '1'
   const includeClosedWon = searchParams.get('includeClosedWon') === '1'
-  const prefix = `${mode === 'all' ? 'v15_all' : 'v15'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const prefix = `${mode === 'all' ? 'v16_all' : 'v16'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
   const out = (r: any) => {
     if (!slim) return NextResponse.json(r)
     const { contacts_by_priority, ...rest } = r

@@ -558,3 +558,11 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     Wired in: MQLs page (sql_count / opportunity_count / demo_completed_count + prev-period), Summary key numbers (curr + prev). 12-18 Oct: SQL 4, Opp 4 (4 deals, $1.54M), meetings booked 14 / held 14; old cohort logic gave 0/0.
     The Consolidated MQL Lifecycle funnel + Lead Status funnel rows other than Demo Booked/Completed remain COHORT-based (% of the period's MQLs) - intentionally unchanged. Demo No Show still lead-status/cohort based
     (HubSpot meeting outcomes never record no-shows); shows 0 in most periods.
+48. **2026-10-19 — SQL now includes every Opportunity; activity fetches made strict.** User: Demo Completed and SQL still showing 0, and a lead moved to Opportunity by marketing must also count as SQL.
+    (a) `fetchPipelineActivity`: SQL = unique marketing-form leads that entered the SQL stage in the period UNION leads that got a marketing-sourced Studio deal (Opportunity) in the period (SQL >= Opportunity always;
+    response `pipeline_activity.sql = {count, entered_sql_stage, via_opportunity, details}`). 12-18 Oct: SQL 8 (4 stage entries + 4 via opportunity), Opp 4, meetings booked 14 / held 14.
+    (b) Robustness: the `post` helper inside `fetchMeetingActivity` / `fetchPipelineActivity` used to return `{results: []}` on any non-429 error and give up silently after 3 rate-limit retries -> a transient HubSpot
+    failure became a "0" that was then CACHED (up to 7 days for past ranges). Now: 6 retries with backoff on 429/5xx, then THROW (caught -> activity = null), and `computeGET` does NOT cache a result whose
+    meetings/pipeline activity is null. Cache prefix `v16`. When activity is null the UI still falls back to the old cohort numbers (so a failure shows as the old, lower numbers, never cached).
+    Could not reproduce "0" for any completed range locally; the current week (19-25 Oct) legitimately has Demo Completed 0 until the meetings booked for 21-23 Oct take place (they were booked the week before, so
+    Meeting Booked is also 0 for the new week).
