@@ -44,7 +44,7 @@ export function MQLConversionTrendChart({ weekStart }: Props) {
         const res = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}`)
         const data = await res.json()
         const total = data.total || 0
-        const sql = data.funnel?.sql || 0
+        const sql = data.pipeline_activity?.sql?.count ?? (data.funnel?.sql || 0)
         return { label: format(new Date(wk + 'T00:00:00'), 'MMM d'), pct: total > 0 ? Math.round((sql / total) * 100) : 0 }
       } catch {
         return { label: format(new Date(wk + 'T00:00:00'), 'MMM d'), pct: 0 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { gzipSync, gunzipSync } from 'zlib'
-import { STUDIO_DEALS_PIPELINE_ID, MARKETING_DEAL_SOURCES, STAGE_INFO } from '@/lib/marketing-opportunities'
+import { STUDIO_DEALS_PIPELINE_ID, MARKETING_DEAL_SOURCES, STAGE_INFO, resolveChannel } from '@/lib/marketing-opportunities'
 
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 
@@ -479,13 +479,15 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
     }
     throw new Error(`HubSpot ${url} failed: ${last}`)
   }
-  const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity']
+  const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity', 'hs_analytics_source', 'utm_source', 'utm_medium']
   const toRow = (id: string, c: any, extra: any = {}) => {
     const src = c.lead_source_category || ''
     return {
       id, name: [c.firstname, c.lastname].filter(Boolean).join(' ') || '—', company: c.company || '—', jobTitle: c.jobtitle || '—',
       message: (c.message || '').trim().slice(0, 600), platformTools: (c.platform_tools || '').trim(),
-      ads: src === 'Paid Campaigns' || src === 'Paid Search / Paid Social', formType: String(c.lead_form_type || ''), ...extra,
+      ads: src === 'Paid Campaigns' || src === 'Paid Search / Paid Social', formType: String(c.lead_form_type || ''),
+      // Acquisition channel (paid signals first, then lead source category, then HubSpot original source) - same rule as the Executive Dashboard.
+      channel: resolveChannel(c), ...extra,
     }
   }
 
@@ -597,7 +599,7 @@ async function computeGET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v16_all' : 'v16'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v17_all' : 'v17'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
 
@@ -1333,7 +1335,7 @@ export async function GET(req: NextRequest) {
   const slim = searchParams.get('slim') === '1'
   const includePipeline = searchParams.get('includePipeline') === '1'
   const includeClosedWon = searchParams.get('includeClosedWon') === '1'
-  const prefix = `${mode === 'all' ? 'v16_all' : 'v16'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const prefix = `${mode === 'all' ? 'v17_all' : 'v17'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
   const out = (r: any) => {
     if (!slim) return NextResponse.json(r)
     const { contacts_by_priority, ...rest } = r

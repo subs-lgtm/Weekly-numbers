@@ -7,7 +7,7 @@ import { useWeek } from '@/lib/week-context'
 import { getDb } from '@/lib/firebase'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { format, subWeeks } from 'date-fns'
-import { TotalMQLSummaryCards, OtherMQLMetrics, MQLLeadStatusFunnel, MQLLifecycleStatusFunnel } from '@/components/mql/MQLScoreCards'
+import { TotalMQLSummaryCards, OtherMQLMetrics, MQLLeadStatusFunnel, MQLLifecycleStatusFunnel, buildPipelineHover } from '@/components/mql/MQLScoreCards'
 import { MQLWoWChart } from '@/components/mql/MQLWoWChart'
 import { MQLMTDChart } from '@/components/mql/MQLMTDChart'
 import { MQLToSQLConversionChart } from '@/components/mql/MQLToSQLConversionChart'
@@ -81,6 +81,8 @@ function MQLPageInner() {
   const [prevMonthToDateTotal, setPrevMonthToDateTotal] = useState<number | null>(null)
   // Month-to-date funnel — for the MQL Journey "this month" bracket
   const [monthToDateFunnel, setMonthToDateFunnel] = useState<Funnel | null>(null)
+  const [monthToDateActivity, setMonthToDateActivity] = useState<{ sql: { count: number; ads: number }; opportunity: { count: number; ads: number } } | null>(null)
+  const [monthToDateLeads, setMonthToDateLeads] = useState<ReturnType<typeof buildPipelineHover> | null>(null)
 
 
 
@@ -163,6 +165,8 @@ function MQLPageInner() {
         if (json && !json.error) {
           setMonthToDateTotal(json.total || 0)
           if (json.funnel) setMonthToDateFunnel(json.funnel)
+          setMonthToDateActivity(summarisePipelineActivity(json.pipeline_activity))
+          setMonthToDateLeads(json.pipeline_activity ? buildPipelineHover(json.pipeline_activity) : null)
         }
       })
       .catch(() => {})
@@ -277,6 +281,18 @@ function MQLPageInner() {
       d['meetings_funnel'] = {
         value: JSON.stringify(hubspotData.meetings_funnel || null),
         notes: 'Live from HubSpot (Meetings object)',
+        updatedBy: 'hubspot',
+        updatedAt: null,
+      }
+      d['pipeline_activity_leads'] = {
+        value: JSON.stringify(hubspotData.pipeline_activity ? buildPipelineHover(hubspotData.pipeline_activity) : null),
+        notes: 'Who is behind the SQL / Opportunity counts, with channel',
+        updatedBy: 'hubspot',
+        updatedAt: null,
+      }
+      d['pipeline_activity_counts'] = {
+        value: JSON.stringify(summarisePipelineActivity(hubspotData.pipeline_activity)),
+        notes: 'Activity-based SQL / Opportunity counts',
         updatedBy: 'hubspot',
         updatedAt: null,
       }
@@ -462,7 +478,14 @@ function MQLPageInner() {
               concepts, now fully covered by the Lead Status funnel above) per explicit request. */}
           <div className="section-label">Consolidated MQL Lifecycle Status</div>
           <div className="section-sub">The complete lifecycle from Marketing Qualified Lead to closed Customer</div>
-          {hubspotData?.funnel && <MQLJourneyFunnel funnel={hubspotData.funnel} monthlyFunnel={monthToDateFunnel ?? undefined} />}
+          {hubspotData?.funnel && <MQLJourneyFunnel
+            funnel={hubspotData.funnel}
+            monthlyFunnel={monthToDateFunnel ?? undefined}
+            activity={hubspotData.pipeline_activity ? { sql: hubspotData.pipeline_activity.sql?.count ?? 0, opportunity: hubspotData.pipeline_activity.opportunity?.count ?? 0 } : undefined}
+            monthlyActivity={monthToDateActivity ? { sql: monthToDateActivity.sql.count, opportunity: monthToDateActivity.opportunity.count } : undefined}
+            sqlLeads={(monthToDateLeads ?? (hubspotData.pipeline_activity ? buildPipelineHover(hubspotData.pipeline_activity) : null))?.sql}
+            oppLeads={(monthToDateLeads ?? (hubspotData.pipeline_activity ? buildPipelineHover(hubspotData.pipeline_activity) : null))?.opportunity}
+          />}
 
           {/* 7. PRIORITY ANALYSIS */}
           <div className="section-label">Priority Analysis</div>
@@ -510,6 +533,13 @@ function MQLPageInner() {
     </div>
   )
 }
+
+
+// Counts + paid-ads split of the activity-based SQL / Opportunity numbers (for the funnels and their source lines).
+const summarisePipelineActivity = (pa: any) => pa ? ({
+  sql: { count: pa.sql?.count ?? 0, ads: (pa.sql?.details || []).filter((r: any) => r.ads).length },
+  opportunity: { count: pa.opportunity?.count ?? 0, ads: (pa.opportunity?.details || []).filter((r: any) => r.ads).length },
+}) : null
 
 export default function Page() {
   const section = SECTION_MAP['mqls']

@@ -26,11 +26,13 @@ type LeadContact = {
 
 type Props = {
   contacts: LeadContact[]
+  /** Activity-based counts for informational leads (those that reached the stage in the selected dates, whenever the lead came in). */
+  activity?: { sql: number; opportunity: number; demoBooked: number; demoCompleted: number } | null
 }
 
 const CARD_CLS = 'rounded-[20px] border border-[#D4CBC0] bg-white p-6 shadow-[0_4px_20px_rgba(40,20,10,.07)]'
 
-export function LeadFunnelCard({ contacts }: Props) {
+export function LeadFunnelCard({ contacts, activity }: Props) {
   // 1. Filter out Agent Studio
   const nonStudio = useMemo(() => contacts.filter(c => c.formType !== 'Agent Studio'), [contacts])
 
@@ -72,8 +74,17 @@ export function LeadFunnelCard({ contacts }: Props) {
     // Customer: Of those MQLs, how many became customers
     const customer = mqlsList.filter(c => c.lifecycleStage === 'customer').length
 
-    return { lead, mql, sql, demoBooked, demoCompleted, opportunity, customer }
-  }, [nonStudio])
+    // SQL / Demo / Opportunity: activity-based when available, so an informational lead (e.g. a Playbook download from August)
+    // that reaches SQL or books a demo in the selected dates is reflected here, matching the Summary and MQL pages.
+    return {
+      lead, mql,
+      sql: activity?.sql ?? sql,
+      demoBooked: activity?.demoBooked ?? demoBooked,
+      demoCompleted: activity?.demoCompleted ?? demoCompleted,
+      opportunity: activity?.opportunity ?? opportunity,
+      customer,
+    }
+  }, [nonStudio, activity])
 
   const { lead, mql, sql, demoBooked, demoCompleted, opportunity, customer } = funnelData
 
@@ -85,13 +96,16 @@ export function LeadFunnelCard({ contacts }: Props) {
   const customerConvRate = lead > 0 ? ((customer / lead) * 100).toFixed(1) : '0'
 
   // 4. Funnel stages list
+  // With activity-based numbers the stages are no longer a strict chain (a lead can reach SQL or book a demo without having
+  // been in this week's lead cohort), so conversion is measured against total leads instead of the previous stage.
+  const act = !!activity
   const stages = [
     { label: 'Lead', value: lead, color: '#5B3A34', ofLabel: null, ofBase: 0 },
     { label: 'MQL', value: mql, color: '#8A6152', ofLabel: 'of Lead', ofBase: lead },
-    { label: 'SQL', value: sql, color: '#C96A5A', ofLabel: 'of MQL', ofBase: mql },
-    { label: 'Demo Booked', value: demoBooked, color: '#D97706', ofLabel: 'of SQL', ofBase: sql },
+    { label: 'SQL', value: sql, color: '#C96A5A', ofLabel: act ? 'of Lead' : 'of MQL', ofBase: act ? lead : mql },
+    { label: 'Demo Booked', value: demoBooked, color: '#D97706', ofLabel: act ? 'of Lead' : 'of SQL', ofBase: act ? lead : sql },
     { label: 'Demo Completed', value: demoCompleted, color: '#B39A86', ofLabel: 'of Demo Booked', ofBase: demoBooked },
-    { label: 'Opportunity', value: opportunity, color: '#3D5A8C', ofLabel: 'of Demo Completed', ofBase: demoCompleted },
+    { label: 'Opportunity', value: opportunity, color: '#3D5A8C', ofLabel: act ? 'of Lead' : 'of Demo Completed', ofBase: act ? lead : demoCompleted },
     { label: 'Customer', value: customer, color: '#3E7A55', ofLabel: 'of Opportunity', ofBase: opportunity },
   ]
 
@@ -109,6 +123,7 @@ export function LeadFunnelCard({ contacts }: Props) {
           <p className="text-[11px] text-[#7A6A60] mt-0.5">
             Lead &rarr; MQL &rarr; SQL &rarr; Demo Booked &rarr; Demo Completed &rarr; Opportunity &rarr; Customer
           </p>
+          {activity && <p className="text-[10.5px] text-[#9A8C82] mt-0.5">SQL, Demo and Opportunity count informational leads (Playbook, Contact Us, Partner ...) that reached the stage in the selected dates, whenever the lead came in.</p>}
         </div>
       </div>
 

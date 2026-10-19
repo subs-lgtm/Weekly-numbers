@@ -569,3 +569,18 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
 49. **2026-10-19 — Hover lists added to Qualified MQLs, SQLs, Opportunity, Demo Completed (BUILT, typechecked, NOT browser-verified, not deployed).** Summary page key-number cards (`src/app/(app)/page.tsx`,
     `hoverLists` state from the mqls response: contacts_by_priority score>40, pipeline_activity.sql/opportunity details, meetings_activity held rows) + MQLs page Qualified MQLs card (`qualifiedContacts`).
     New `HoverLead` / `LeadListBody` / `SummaryLeadPopover` in `MQLScoreCards.tsx`; right-hand cards align right. Verify visually before relying on it.
+50. **2026-10-19 — SQL / Opportunity (and Leads-funnel Demo rows) now consistent across all funnels.** User: The Lux Collective (Playbook lead created 25 Aug, entered SQL 15 Oct) showed in the Summary SQL card but not in the
+    Leads-page Lead Funnel, the MQL Lifecycle Status Funnel or the Consolidated (MTD) funnel - those were cohort-based (leads created in the range). Now: MQL Lifecycle Status Funnel SQL/Opportunity rows and
+    Consolidated MQL Lifecycle (MTD + "wk") SQL/Opportunity rows use `pipeline_activity` (new enriched key `pipeline_activity_counts`, `summarisePipelineActivity` in mqls/page.tsx; MTD fetch also reads pipeline_activity).
+    Leads page Lead Funnel (`LeadFunnelCard` prop `activity`, extra default-mode /api/hubspot/mqls call in leads/page.tsx) counts INFORMATIONAL leads (primary form not Book a Demo/Email Form/Pre-Built Agents/Webinar/Agent Studio)
+    that reached SQL / got a deal / booked a demo / held a demo in the dates; conversion % in that card is measured against total leads when activity data is present. Customer rows stay cohort/deal-verified (unchanged).
+    12-18 Oct: lifecycle funnel SQL 8 / Opp 4; consolidated MTD SQL 15 (8 wk) / Opp 8 (4 wk); Leads funnel SQL 2 (Lux Collective + Nordic Capital OpenController) / Demo booked 7 / completed 6 / Opp 1.
+51. **2026-10-19 — Hover (who + channel source) on the SQL and Opportunity rows of BOTH MQL-page funnels.** `fetchPipelineActivity` rows now carry `channel` (`resolveChannel` on hs_analytics_source/utm/lead_source_category;
+    cache `v17`). `buildPipelineHover()` (MQLScoreCards.tsx) turns `pipeline_activity` into HoverLead lists (channel chip + "Entered SQL / Moved to Opportunity . date . form" or "deal . $ . stage . source . date . form").
+    "MQL - Lifecycle Status Funnel": week lists via enriched key `pipeline_activity_leads` -> `FunnelStage.leadRows`. "Consolidated MQL Lifecycle Status": month-to-date lists (`monthToDateLeads`, from the MTD fetch) via
+    `MQLJourneyFunnel` props `sqlLeads` / `oppLeads` (falls back to the week lists). Verified in the preview: week SQL 8 / Opp 4, MTD 15 / 8, each row listed with channel chip.
+    Local preview note: MQLs page fires ~10 uncached calls at once locally (first load up to ~2 min); production is cached.
+52. **2026-10-19 — Trend charts now match the Summary SQL numbers.** User: "WoW Trend - MQL -> SQL %" showed 0/43 for the week of 12 Oct while the Summary said SQL 8. `MQLToSQLConversionChart`
+    (WoW MQL->SQL %), `MQLConversionTrendChart` and `mqls/monthly-trends/page.tsx` (sql + opp columns) now read `pipeline_activity.sql.count` / `.opportunity.count` (fallback: cohort funnel). New weekly series
+    (MQL->SQL%): Sep 7 9/84 11%, Sep 14 9/62 15%, Sep 21 7/49 14%, Sep 28 4/43 9%, Oct 5 4/51 8%, Oct 12 8/43 19% (was 5/8/6/0/2/0%). Intentionally NOT changed: `SQLToOppConversionChart` / sql-to-opportunity-monthly
+    (documented eventual-conversion cohort metric), `WoWFunnelTable` drill-down list, `meetings-tracker` page (separate API).

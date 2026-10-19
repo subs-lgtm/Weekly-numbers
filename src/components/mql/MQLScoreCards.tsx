@@ -303,10 +303,33 @@ export type MeetingRow = {
   status: 'completed' | 'held' | 'no_show' | 'upcoming' | 'canceled'; meetingAt?: string | null
   title?: string; notes?: string; noteBy?: string; noteAt?: string | null; outcome?: string
 }
+const CHANNEL_CLS: Record<string, string> = {
+  'Paid Campaigns': 'bg-[#EFE3E0] text-[#6B4C4C]', Direct: 'bg-[#F6E3DE] text-[#A8483A]', 'Organic Search': 'bg-[#E1EEEE] text-[#2F6F6F]',
+  Referral: 'bg-[#F3EBCB] text-[#7A6420]', Social: 'bg-[#E9E3F1] text-[#5E4A82]',
+}
+
+/** SQL / Opportunity hover lists (who + channel source) from the route's pipeline_activity. */
+export function buildPipelineHover(pa: any): { sql: HoverLead[]; opportunity: HoverLead[] } {
+  const sd = (iso?: string | null) => { if (!iso) return ''; const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
+  const chip = (r: any) => ({ chip: r.channel || 'Unattributed', chipCls: CHANNEL_CLS[r.channel] || 'bg-[#EEE7DC] text-[#7A6A60]' })
+  return {
+    sql: (pa?.sql?.details || []).map((r: any): HoverLead => ({
+      id: r.id, name: r.name, company: r.company, jobTitle: r.jobTitle, message: r.message, platformTools: r.platformTools, ...chip(r),
+      meta: [r.via === 'opportunity' ? 'Moved to Opportunity' : 'Entered SQL', sd(r.at), String(r.formType || '').split(';')[0], r.via === 'opportunity' && r.dealName ? r.dealName : ''].filter(Boolean).join(' · '),
+    })),
+    opportunity: (pa?.opportunity?.details || []).map((r: any): HoverLead => ({
+      id: r.id, name: r.name, company: r.company, jobTitle: r.jobTitle, message: r.message, platformTools: r.platformTools, ...chip(r),
+      meta: [r.dealName, r.dealAmount ? '$' + Math.round(r.dealAmount).toLocaleString() : '', r.dealStage, r.dealSource, sd(r.at), String(r.formType || '').split(';')[0]].filter(Boolean).join(' · '),
+    })),
+  }
+}
+
 type FunnelStage = {
   label: string; value: number; color: string; breakdownKey: string; ofLabel?: string; ofBase?: number
   /** Hover list (Demo Booked / Demo Completed - built from HubSpot Meetings) */
   hoverRows?: MeetingRow[]; hoverTitle?: string; hoverFooter?: string
+  /** Hover list of leads (SQL / Opportunity rows) with their channel source */
+  leadRows?: HoverLead[]
 }
 
 const MEETING_STATUS_LABEL: Record<MeetingRow['status'], { label: string; cls: string }> = {
@@ -340,7 +363,7 @@ export type HoverLead = {
   chip?: string; chipCls?: string; meta?: string
 }
 
-function LeadListBody({ rows, title, footer }: { rows: HoverLead[]; title: string; footer?: string }) {
+export function LeadListBody({ rows, title, footer }: { rows: HoverLead[]; title: string; footer?: string }) {
   return (
     <div className="rounded-[14px] border border-[#D4CBC0] bg-white shadow-[0_12px_32px_rgba(40,20,10,.18)] p-3 text-left max-h-[360px] overflow-y-auto">
       <p className="text-[10.5px] uppercase tracking-[.06em] text-[#7A6A60] font-[600] mb-2">{title}</p>
@@ -449,11 +472,11 @@ function FunnelTable({
           const bd = breakdown[stage.breakdownKey]
 
           return (
-            <div key={stage.label} className={cn('relative', stage.hoverRows && 'group/stage hover:z-40 focus-within:z-40')} tabIndex={stage.hoverRows ? 0 : undefined}>
+            <div key={stage.label} className={cn('relative', (stage.hoverRows || stage.leadRows) && 'group/stage hover:z-40 focus-within:z-40')} tabIndex={(stage.hoverRows || stage.leadRows) ? 0 : undefined}>
               <div className="funnel-stage">
                 <div className="funnel-name">
                   {stage.label}
-                  {stage.hoverRows && <span className="block text-[10px] font-[500] text-[#2563EB] underline decoration-dotted underline-offset-2">hover for details</span>}
+                  {(stage.hoverRows || stage.leadRows) && <span className="block text-[10px] font-[500] text-[#2563EB] underline decoration-dotted underline-offset-2">hover for details</span>}
                 </div>
                 <div className="flex flex-col gap-1.5 w-full">
                   <div className="funnel-track w-full">
@@ -480,6 +503,11 @@ function FunnelTable({
                 <div className="funnel-drop">{drop === null ? '—' : `${drop}%`}</div>
               </div>
               {stage.hoverRows && <MeetingHoverList rows={stage.hoverRows} title={stage.hoverTitle || stage.label} footer={stage.hoverFooter} />}
+              {stage.leadRows && (
+                <div className="hidden group-hover/stage:block group-focus-within/stage:block absolute left-0 sm:left-[140px] top-full z-50 pt-1 w-[440px] max-w-[88vw]">
+                  <LeadListBody rows={stage.leadRows} title={stage.hoverTitle || stage.label} footer={stage.hoverFooter} />
+                </div>
+              )}
             </div>
           )
         })}
@@ -576,10 +604,36 @@ export function MQLLifecycleStatusFunnel({ data }: { data: WeekMetrics }) {
     if (raw) lifecycleStatus = JSON.parse(raw)
   } catch {}
 
+  // SQL / Opportunity are activity-based (marketing leads that reached the stage in the selected dates, whenever the lead came in),
+  // the same numbers as the Summary cards. Falls back to the cohort lifecycle counts if the activity data is unavailable.
+  let act: { sql: { count: number; ads: number }; opportunity: { count: number; ads: number } } | null = null
+  try { const raw = data['pipeline_activity_counts']?.value; if (raw && raw !== 'null') act = JSON.parse(raw) } catch {}
+  if (act) {
+    breakdown = {
+      ...breakdown,
+      sql: { working: 0, linkedinAds: act.sql.ads, website: act.sql.count - act.sql.ads, total: act.sql.count },
+      opportunity: { working: 0, linkedinAds: act.opportunity.ads, website: act.opportunity.count - act.opportunity.ads, total: act.opportunity.count },
+    }
+  }
+  let leadLists: { sql: HoverLead[]; opportunity: HoverLead[] } | null = null
+  try { const raw = data['pipeline_activity_leads']?.value; if (raw && raw !== 'null') leadLists = JSON.parse(raw) } catch {}
+  const sqlCount = act ? act.sql.count : (lifecycleStatus.sql || 0)
+  const oppCount = act ? act.opportunity.count : (lifecycleStatus.opportunity || 0)
+
   const stages: FunnelStage[] = [
     { label: 'MQL', value: mqls || 0, color: '#5B3A34', breakdownKey: 'mqls' },
-    { label: 'SQL', value: lifecycleStatus.sql || 0, color: '#C96A5A', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'sql' },
-    { label: 'Opportunity', value: lifecycleStatus.opportunity || 0, color: '#3D5A8C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'opportunity' },
+    {
+      label: 'SQL', value: sqlCount, color: '#C96A5A', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'sql',
+      leadRows: act && leadLists ? leadLists.sql : undefined,
+      hoverTitle: 'SQLs - marketing leads that entered SQL or moved to Opportunity in this period, with channel source',
+      hoverFooter: 'Counted in the period it happened, whenever the lead itself came in. Stages HubSpot copied from the company record are excluded.',
+    },
+    {
+      label: 'Opportunity', value: oppCount, color: '#3D5A8C', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'opportunity',
+      leadRows: act && leadLists ? leadLists.opportunity : undefined,
+      hoverTitle: 'Opportunities - marketing leads with a Studio deal created in this period, with channel source',
+      hoverFooter: 'Deal-based, like the Executive Dashboard: marketing-sourced Studio Deals created in the selected dates, linked to a lead from a marketing form.',
+    },
     { label: 'Customer', value: lifecycleStatus.customer || 0, color: '#3E7A55', ofLabel: 'of MQL', ofBase: mqls || 0, breakdownKey: 'customer' },
   ]
 

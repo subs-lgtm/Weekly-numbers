@@ -128,8 +128,9 @@ export default function MQLMonthlyTrendsPage() {
           return {
             month: m.label,
             mqls: mqlData.total || 0,
-            sql: mqlData.funnel?.sql || 0,
-            opp: mqlData.funnel?.opportunity || 0,
+            // Activity-based (same numbers as the Summary / MQL page): reached SQL / got a marketing-sourced Studio deal in the month.
+            sql: mqlData.pipeline_activity?.sql?.count ?? (mqlData.funnel?.sql || 0),
+            opp: mqlData.pipeline_activity?.opportunity?.count ?? (mqlData.funnel?.opportunity || 0),
             high: mqlData.high_priority || 0,
             medium: mqlData.medium_priority || 0,
             low: mqlData.low_priority || 0,

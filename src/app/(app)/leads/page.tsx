@@ -65,6 +65,30 @@ function LeadsPageInner() {
     })
   }, [weekStart, queryStart, queryEnd, currentMonthStart, currentMonthEnd, prevMonthStart, prevMonthEnd])
 
+  // Activity-based SQL / Demo / Opportunity for informational leads (same engine as the Summary + MQL pages). One extra
+  // call for the selected dates; it shares the server cache with the MQL page.
+  const [funnelActivity, setFunnelActivity] = useState<{ sql: number; opportunity: number; demoBooked: number; demoCompleted: number } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setFunnelActivity(null)
+    fetch(`/api/hubspot/mqls?start=${queryStart}&end=${queryEnd}`)
+      .then(r => r.json())
+      .then(j => {
+        if (cancelled || !j?.pipeline_activity || !j?.meetings_activity) return
+        const NOT_INFO = new Set(['Book a Demo', 'Email Form', 'Pre-Built Agents', 'Webinar', 'Agent Studio'])
+        const info = (r: any) => { const f = String(r.formType || '').split(';')[0].trim(); return !!f && !NOT_INFO.has(f) }
+        const m = j.meetings_activity.details || []
+        setFunnelActivity({
+          sql: (j.pipeline_activity.sql?.details || []).filter(info).length,
+          opportunity: (j.pipeline_activity.opportunity?.details || []).filter(info).length,
+          demoBooked: m.filter((r: any) => r.booked && info(r)).length,
+          demoCompleted: m.filter((r: any) => (r.status === 'completed' || r.status === 'held') && info(r)).length,
+        })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [queryStart, queryEnd])
+
   const currWeekContacts = useMemo(() => {
     if (!data?.currWeek) return []
     const priorities = ['high', 'medium', 'low', 'unknown']
@@ -185,7 +209,7 @@ function LeadsPageInner() {
       </div>
 
       {/* 4. Lead Funnel */}
-      <LeadFunnelCard contacts={currWeekContacts} />
+      <LeadFunnelCard contacts={currWeekContacts} activity={funnelActivity} />
 
       {/* 5. Leads Details Table */}
       <LeadsDetailsTable contactsByPriority={contactsByPriority} />

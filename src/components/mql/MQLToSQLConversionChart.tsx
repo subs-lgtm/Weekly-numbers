@@ -80,7 +80,9 @@ export function MQLToSQLConversionChart({ sectionKey, weekStart }: Props) {
           const mqlRes = await fetch(`/api/hubspot/mqls?start=${wk}&end=${end}&nocache=1`)
           const mqlData = await mqlRes.json()
           const mqls = mqlData.total || 0
-          const sql = mqlData.funnel?.sql || 0
+          // Activity-based SQL (marketing leads that entered SQL or moved to Opportunity in the week, whenever the lead
+          // came in) - the same number as the Summary SQLs card. Falls back to the cohort count if unavailable.
+          const sql = mqlData.pipeline_activity?.sql?.count ?? (mqlData.funnel?.sql || 0)
           const rate = mqls > 0 ? Math.round((sql / mqls) * 100) : 0
           return { week: format(new Date(wk + 'T00:00:00'), 'MMM d'), 'MQL → SQL %': rate, mqls, sql }
         } catch {
@@ -111,7 +113,7 @@ export function MQLToSQLConversionChart({ sectionKey, weekStart }: Props) {
   return (
     <div className={CARD}>
       <p className="eyebrow mb-1">WoW Trend — MQL → SQL %</p>
-      <p className="text-[12px] text-[#7A6A60] mb-4">Hover each point for MQL &amp; SQL counts · SQL from HubSpot</p>
+      <p className="text-[12px] text-[#7A6A60] mb-4">Hover each point for MQL &amp; SQL counts · SQLs = leads that reached SQL that week (same as the Summary)</p>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 36, right: 8, left: -16, bottom: 0 }}>
           <CartesianGrid {...GRID} />
