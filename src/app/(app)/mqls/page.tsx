@@ -100,6 +100,18 @@ function MQLPageInner() {
   // Leads whose meeting was BOOKED in the selected dates (activity-based) - same population as the Meeting Booked card.
   const meetingContacts = useMemo(() => (hubspotData?.meetings_activity?.details || []).filter((d: any) => d.booked), [hubspotData])
 
+  // Qualified MQLs (lead score above 40) for the card's hover list, highest score first.
+  const qualifiedContacts = useMemo(() => {
+    const cp = hubspotData?.contacts_by_priority as Record<string, any[]> | undefined
+    if (!cp) return []
+    const label: Record<string, string> = { high: 'High', medium: 'Medium', low: 'Low', unknown: 'Unscored' }
+    const cls: Record<string, string> = { high: 'bg-[#FBE9E6] text-[#A33A2E]', medium: 'bg-[#FBF1E4] text-[#8A5A14]', low: 'bg-[#E8EEF8] text-[#2D4C86]', unknown: 'bg-[#EEE7DC] text-[#7A6A60]' }
+    return Object.entries(cp).flatMap(([prio, list]) => (list || []).filter(c => (c.score ?? 0) > 40).map(c => ({
+      id: c.id, name: c.name, company: c.company, jobTitle: c.jobTitle, message: c.message, platformTools: c.platformTools,
+      chip: `${label[prio] || prio} · ${Math.round(c.score)}`, chipCls: cls[prio], meta: [c.source, c.status].filter(x => x && x !== '—').join(' · '), _score: c.score,
+    }))).sort((a, b) => b._score - a._score)
+  }, [hubspotData])
+
   const handleHubSpotData = useCallback((d: typeof hubspotData) => {
     setHubspotData(d)
     // Sync HubSpot total to Firestore so WoW/MoM charts can read it
@@ -410,6 +422,7 @@ function MQLPageInner() {
             data={enrichedData}
             prevData={enrichedPrevData}
             meetingContacts={meetingContacts}
+            qualifiedContacts={qualifiedContacts}
           />
 
           {/* 2. TREND CHARTS */}

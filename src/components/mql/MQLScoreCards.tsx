@@ -15,6 +15,8 @@ type Props = {
   monthToDateTotal?: number | null
   /** Leads with a meeting booked in the selected period — shown in the Meeting Booked card's hover list. */
   meetingContacts?: MeetingRow[]
+  /** Leads behind the Qualified MQLs card (score > 40) for its hover list. */
+  qualifiedContacts?: HoverLead[]
 }
 
 
@@ -107,7 +109,7 @@ function GoalVsActualCard({ value, goal }: { value: string; goal: number }) {
   )
 }
 
-function QualifiedMQLsCard({ value, prevValue, totalMqls }: { value: string; prevValue: string; totalMqls: string }) {
+function QualifiedMQLsCard({ value, prevValue, totalMqls, rows = [] }: { value: string; prevValue: string; totalMqls: string; rows?: HoverLead[] }) {
   const delta = getDelta(value, prevValue)
   const hasValue = value !== '' && value !== undefined
   const totalVal = parseFloat(totalMqls) || 0
@@ -115,7 +117,7 @@ function QualifiedMQLsCard({ value, prevValue, totalMqls }: { value: string; pre
   const pctOfTotal = totalVal > 0 ? Math.round((qualVal / totalVal) * 100) : 0
 
   return (
-    <div className={CARD_CLS}>
+    <div className={cn(CARD_CLS, 'hover:z-40 focus-within:z-40')} tabIndex={0}>
       <div className="inline-flex items-center justify-center rounded-full p-2 mb-3" style={{ background: 'rgba(22,163,74,.08)', color: '#16A34A' }}>
         <CheckCircle className="h-4 w-4" />
       </div>
@@ -126,6 +128,12 @@ function QualifiedMQLsCard({ value, prevValue, totalMqls }: { value: string; pre
       <DeltaPill delta={delta} suffix="WoW" />
       {totalVal > 0 && <p className="caption mt-1 text-[#D97706]">{pctOfTotal}% of total (score &gt; 40)</p>}
       {prevValue && <p className="caption mt-1">prev {prevValue}</p>}
+      {rows.length > 0 && <p className="caption mt-1.5 text-[#2563EB] underline decoration-dotted underline-offset-2">hover to see who</p>}
+      {rows.length > 0 && (
+        <div className="hidden group-hover:block group-focus-within:block absolute left-0 top-full z-50 pt-2 w-[440px] max-w-[88vw]">
+          <LeadListBody rows={rows} title="Qualified MQLs (lead score above 40) - company, use case and score" footer="Book a Demo leads created in the selected dates with a lead score above 40, highest score first." />
+        </div>
+      )}
     </div>
   )
 }
@@ -187,7 +195,7 @@ function MQLToDemoRateCard({ value, prevValue }: { value: string; prevValue: str
 }
 
 /** Total MQL Summary — 5 cards in priority order, matches spec requirements. */
-export function TotalMQLSummaryCards({ data, prevData, meetingContacts = [] }: Props) {
+export function TotalMQLSummaryCards({ data, prevData, meetingContacts = [], qualifiedContacts = [] }: Props) {
   const [weeklyGoal, setWeeklyGoal] = useState<number>(100)
 
   // Load weekly MQL goal from Firestore
@@ -210,7 +218,7 @@ export function TotalMQLSummaryCards({ data, prevData, meetingContacts = [] }: P
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
       <WeeklyMQLsCard value={data['mqls_total']?.value ?? ''} prevValue={prevData['mqls_total']?.value ?? ''} />
       <GoalVsActualCard value={data['mqls_total']?.value ?? ''} goal={weeklyGoal} />
-      <QualifiedMQLsCard value={data['mqls_qualified']?.value ?? ''} prevValue={prevData['mqls_qualified']?.value ?? ''} totalMqls={data['mqls_total']?.value ?? ''} />
+      <QualifiedMQLsCard value={data['mqls_qualified']?.value ?? ''} prevValue={prevData['mqls_qualified']?.value ?? ''} totalMqls={data['mqls_total']?.value ?? ''} rows={qualifiedContacts} />
       <MeetingBookedCard value={data['meeting_booked']?.value ?? ''} prevValue={prevData['meeting_booked']?.value ?? ''} contacts={meetingContacts} />
       <MQLToDemoRateCard value={data['mql_to_demo_rate']?.value ?? ''} prevValue={prevData['mql_to_demo_rate']?.value ?? ''} />
     </div>
@@ -317,11 +325,60 @@ function MeetingHoverList({ rows, title, footer }: { rows: MeetingRow[]; title: 
   )
 }
 
-/** Same list, positioned for the Summary page's Meetings Booked card (named group `mtg`). */
-export function SummaryMeetingsPopover({ rows, title, footer }: { rows: MeetingRow[]; title: string; footer?: string }) {
+/** Same list, positioned for the Summary page's key-number cards (named group `mtg`). `align` keeps it on-screen for right-hand cards. */
+export function SummaryMeetingsPopover({ rows, title, footer, align = 'left' }: { rows: MeetingRow[]; title: string; footer?: string; align?: 'left' | 'right' }) {
   return (
-    <div className="hidden group-hover/mtg:block group-focus-within/mtg:block absolute left-0 top-full z-50 pt-1 w-[440px] max-w-[88vw]">
+    <div className={cn('hidden group-hover/mtg:block group-focus-within/mtg:block absolute top-full z-50 pt-1 w-[440px] max-w-[88vw]', align === 'right' ? 'right-0' : 'left-0')}>
       <MeetingListBody rows={rows} title={title} footer={footer} />
+    </div>
+  )
+}
+
+/** A lead row for the SQL / Opportunity / Qualified MQL hover lists (company, person, use case + one detail line). */
+export type HoverLead = {
+  id: string; name?: string; company?: string; jobTitle?: string; message?: string; platformTools?: string
+  chip?: string; chipCls?: string; meta?: string
+}
+
+function LeadListBody({ rows, title, footer }: { rows: HoverLead[]; title: string; footer?: string }) {
+  return (
+    <div className="rounded-[14px] border border-[#D4CBC0] bg-white shadow-[0_12px_32px_rgba(40,20,10,.18)] p-3 text-left max-h-[360px] overflow-y-auto">
+      <p className="text-[10.5px] uppercase tracking-[.06em] text-[#7A6A60] font-[600] mb-2">{title}</p>
+      {rows.length === 0 ? <p className="text-[12px] text-[#7A6A60]">None in this period.</p> : (
+        <ul className="space-y-3">
+          {rows.map(c => {
+            const uc = extractUseCase({ message: c.message, platformTools: c.platformTools })
+            const theme = classifyUseCase(uc.text)
+            const snippet = uc.text.replace(/\s+/g, ' ').slice(0, 140)
+            return (
+              <li key={c.id} className="border-b border-[#EEE7DC] last:border-0 pb-2.5 last:pb-0">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">{c.company && c.company !== '—' ? c.company : '(no company)'}</span>
+                  {c.chip && <span className={`shrink-0 rounded-full px-2 py-[1px] text-[10px] font-[600] ${c.chipCls || 'bg-[#EEE7DC] text-[#7A6A60]'}`}>{c.chip}</span>}
+                </div>
+                <p className="text-[11.5px] text-[#7A6A60] truncate">
+                  {[c.name && c.name !== '—' ? c.name : '', c.jobTitle && c.jobTitle !== '—' ? c.jobTitle : ''].filter(Boolean).join(' · ')}
+                </p>
+                {c.meta && <p className="text-[10.5px] text-[#9A8C82]">{c.meta}</p>}
+                <div className="mt-1 flex items-start gap-1.5">
+                  <span className="shrink-0 rounded-full px-2 py-[1px] text-[10.5px] font-[600] text-white" style={{ background: theme.color }}>{theme.label}</span>
+                  {snippet && theme.key !== 'none' && <span className="text-[11.5px] leading-snug text-[#2A1F1A]">{snippet}{uc.text.length > 140 ? '…' : ''}</span>}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {footer && <p className="mt-2 pt-2 border-t border-[#EEE7DC] text-[11px] text-[#8A5A14]">{footer}</p>}
+    </div>
+  )
+}
+
+/** Lead hover list for the Summary page's key-number cards (named group `mtg`). */
+export function SummaryLeadPopover({ rows, title, footer, align = 'left' }: { rows: HoverLead[]; title: string; footer?: string; align?: 'left' | 'right' }) {
+  return (
+    <div className={cn('hidden group-hover/mtg:block group-focus-within/mtg:block absolute top-full z-50 pt-1 w-[440px] max-w-[88vw]', align === 'right' ? 'right-0' : 'left-0')}>
+      <LeadListBody rows={rows} title={title} footer={footer} />
     </div>
   )
 }

@@ -16,7 +16,7 @@ import { Loader2, TrendingUp, TrendingDown, Minus, Pencil, Check, X } from "luci
 import { HighPriorityLeads } from "@/components/summary/HighPriorityLeads";
 import { OKRSection } from "@/components/summary/OKRSection";
 import { ActivitySummaryTable } from "@/components/summary/ActivitySummaryTable";
-import { SummaryMeetingsPopover, type MeetingRow } from "@/components/mql/MQLScoreCards";
+import { SummaryMeetingsPopover, SummaryLeadPopover, type MeetingRow, type HoverLead } from "@/components/mql/MQLScoreCards";
 
 // Key metrics pulled from across all sections
 const SUMMARY_METRICS: { section: string; key: string; label: string; prefix?: string; isManual?: boolean; isGSI?: boolean }[] = [
@@ -45,6 +45,8 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
   const [loading, setLoading] = useState(true)
   // Leads behind the Meetings Booked card (company, use case, status, SDR note) - for its hover list
   const [meetings, setMeetings] = useState<{ rows: MeetingRow[]; awaiting: number; noShow: number } | null>(null)
+  // Lists behind the other key numbers' hovers
+  const [hoverLists, setHoverLists] = useState<{ qualified: HoverLead[]; sql: HoverLead[]; opp: HoverLead[]; demo: MeetingRow[] }>({ qualified: [], sql: [], opp: [], demo: [] })
   // Track keys that have been manually saved to Firestore — API must not overwrite these
   const manualKeys = useRef<Set<string>>(new Set())
   // Track keys that have been manually saved for the previous week
@@ -75,6 +77,29 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
       if (curr && !curr.error) {
         const mf = curr.meetings_activity
         setMeetings(mf ? { rows: (mf.details || []).filter((d: any) => d.booked), awaiting: mf.held_unconfirmed || 0, noShow: mf.no_show || 0 } : null)
+        // Hover lists for Qualified MQLs / SQLs / Opportunity / Demo Completed
+        const shortDate = (iso?: string | null) => { if (!iso) return ''; const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
+        const prioLabel: Record<string, string> = { high: 'High', medium: 'Medium', low: 'Low', unknown: 'Unscored' }
+        const prioCls: Record<string, string> = { high: 'bg-[#FBE9E6] text-[#A33A2E]', medium: 'bg-[#FBF1E4] text-[#8A5A14]', low: 'bg-[#E8EEF8] text-[#2D4C86]', unknown: 'bg-[#EEE7DC] text-[#7A6A60]' }
+        const qualified: (HoverLead & { _score: number })[] = Object.entries((curr.contacts_by_priority || {}) as Record<string, any[]>)
+          .flatMap(([prio, list]) => (list || []).filter((c: any) => (c.score ?? 0) > 40).map((c: any) => ({
+            id: c.id, name: c.name, company: c.company, jobTitle: c.jobTitle, message: c.message, platformTools: c.platformTools,
+            chip: `${prioLabel[prio] || prio} · ${Math.round(c.score)}`, chipCls: prioCls[prio],
+            meta: [c.source, c.status].filter((x: string) => x && x !== '—').join(' · '), _score: c.score as number,
+          }))).sort((a, b) => b._score - a._score)
+        const sqlRows: HoverLead[] = (curr.pipeline_activity?.sql?.details || []).map((r: any) => ({
+          id: r.id, name: r.name, company: r.company, jobTitle: r.jobTitle, message: r.message, platformTools: r.platformTools,
+          chip: r.via === 'opportunity' ? 'Moved to Opportunity' : 'Entered SQL',
+          chipCls: r.via === 'opportunity' ? 'bg-[#E8EEF8] text-[#2D4C86]' : 'bg-[#E6F3EA] text-[#2F6A45]',
+          meta: [shortDate(r.at), String(r.formType || '').split(';')[0], r.via === 'opportunity' && r.dealName ? r.dealName : ''].filter(Boolean).join(' · '),
+        }))
+        const oppRows: HoverLead[] = (curr.pipeline_activity?.opportunity?.details || []).map((r: any) => ({
+          id: r.id, name: r.name, company: r.company, jobTitle: r.jobTitle, message: r.message, platformTools: r.platformTools,
+          chip: r.dealStage || 'Deal created', chipCls: 'bg-[#E8EEF8] text-[#2D4C86]',
+          meta: [r.dealName, r.dealAmount ? '$' + Math.round(r.dealAmount).toLocaleString() : '', r.dealSource, shortDate(r.at)].filter(Boolean).join(' · '),
+        }))
+        const demoRows: MeetingRow[] = (curr.meetings_activity?.details || []).filter((d: any) => d.status === 'completed' || d.status === 'held')
+        setHoverLists({ qualified, sql: sqlRows, opp: oppRows, demo: demoRows })
         setData(d => ({
           ...d,
           'mqls:mqls_total': String(curr.total || 0),
@@ -197,7 +222,7 @@ function useSummaryData(weekStart: string, queryStart?: string, queryEnd?: strin
     return () => { organicCancelled = true; unsubs.forEach(u => u()) }
   }, [weekStart, queryStart, queryEnd])
 
-  return { data, prevData, loading, meetings }
+  return { data, prevData, loading, meetings, hoverLists }
 }
 
 // ── ManualEditCard — click pencil to inline-edit, saves to Firestore ──────────
@@ -327,7 +352,7 @@ function ManualEditCard({
 }
 
 function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string; queryStart?: string; queryEnd?: string }) {
-  const { data, prevData, loading, meetings } = useSummaryData(weekStart, queryStart, queryEnd)
+  const { data, prevData, loading, meetings, hoverLists } = useSummaryData(weekStart, queryStart, queryEnd)
 
   if (loading) return (
     <div>
@@ -359,7 +384,7 @@ function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string
     <div>
       <p className="eyebrow mb-3">Key Numbers</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {SUMMARY_METRICS.map(m => {
+        {SUMMARY_METRICS.map((m, idx) => {
           const val = data[`${m.section}:${m.key}`] || ''
           const prev = prevData[`${m.section}:${m.key}`] || ''
           const n = parseFloat(val)
@@ -418,7 +443,15 @@ function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string
             )
           }
 
-          const isMeetings = m.key === 'meeting_booked' && !!meetings && meetings.rows.length > 0
+          // Hover list behind this card (who is in the number): meetings, qualified MQLs, SQLs, Opportunity, Demo Completed.
+          const align: 'left' | 'right' = idx % 4 >= 2 ? 'right' : 'left'
+          const hoverKind: 'meetings' | 'qualified' | 'sql' | 'opp' | 'demo' | null =
+            m.key === 'meeting_booked' && meetings && meetings.rows.length > 0 ? 'meetings'
+            : m.key === 'qualified_mqls' && hoverLists.qualified.length > 0 ? 'qualified'
+            : m.key === 'sql_count' && hoverLists.sql.length > 0 ? 'sql'
+            : m.key === 'opportunity_count' && hoverLists.opp.length > 0 ? 'opp'
+            : m.key === 'demo_completed' && hoverLists.demo.length > 0 ? 'demo' : null
+          const isMeetings = hoverKind !== null
           return (
             <div
               key={`${m.section}:${m.key}`}
@@ -445,14 +478,49 @@ function SummaryMetrics({ weekStart, queryStart, queryEnd }: { weekStart: string
                   <span className="text-[11px] text-[#7A6A60]">prev: {m.prefix || ''}{p.toLocaleString()}</span>
                 )}
               </div>
-              {isMeetings && meetings && (
+              {isMeetings && (
                 <>
                   <p className="mt-1.5 text-[10px] text-[#2563EB] underline decoration-dotted underline-offset-2">hover to see who</p>
-                  <SummaryMeetingsPopover
-                    rows={meetings.rows}
-                    title="Meetings booked in this period - company, use case and latest SDR note"
-                    footer="Unique leads from marketing forms (not Agent Studio-only users) whose meeting was booked in the selected dates, whenever the lead itself came in."
-                  />
+                  {hoverKind === 'meetings' && meetings && (
+                    <SummaryMeetingsPopover
+                      align={align}
+                      rows={meetings.rows}
+                      title="Meetings booked in this period - company, use case and latest SDR note"
+                      footer="Unique leads from marketing forms (not Agent Studio-only users) whose meeting was booked in the selected dates, whenever the lead itself came in."
+                    />
+                  )}
+                  {hoverKind === 'demo' && (
+                    <SummaryMeetingsPopover
+                      align={align}
+                      rows={hoverLists.demo}
+                      title="Demo completed - meetings that took place in this period, with the latest SDR note"
+                      footer="Unique marketing-form leads whose meeting took place in the selected dates and was not cancelled, rescheduled or marked no-show. SDRs rarely set the outcome in HubSpot, so most are inferred from the meeting date."
+                    />
+                  )}
+                  {hoverKind === 'qualified' && (
+                    <SummaryLeadPopover
+                      align={align}
+                      rows={hoverLists.qualified}
+                      title="Qualified MQLs (lead score above 40) - company, use case and score"
+                      footer="Book a Demo leads created in the selected dates with a lead score above 40, highest score first."
+                    />
+                  )}
+                  {hoverKind === 'sql' && (
+                    <SummaryLeadPopover
+                      align={align}
+                      rows={hoverLists.sql}
+                      title="SQLs - marketing leads that entered SQL or moved to Opportunity in this period"
+                      footer="Counted when the lead reached SQL (or got a marketing-sourced Studio deal) in the selected dates, whenever the lead itself came in. Stages HubSpot copied from the company record are excluded."
+                    />
+                  )}
+                  {hoverKind === 'opp' && (
+                    <SummaryLeadPopover
+                      align={align}
+                      rows={hoverLists.opp}
+                      title="Opportunities - marketing leads with a Studio deal created in this period"
+                      footer="Deal-based, like the Executive Dashboard: marketing-sourced Studio Deals created in the selected dates, linked to a lead from a marketing form."
+                    />
+                  )}
                 </>
               )}
             </div>

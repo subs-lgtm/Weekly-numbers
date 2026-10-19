@@ -566,3 +566,6 @@ Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
     meetings/pipeline activity is null. Cache prefix `v16`. When activity is null the UI still falls back to the old cohort numbers (so a failure shows as the old, lower numbers, never cached).
     Could not reproduce "0" for any completed range locally; the current week (19-25 Oct) legitimately has Demo Completed 0 until the meetings booked for 21-23 Oct take place (they were booked the week before, so
     Meeting Booked is also 0 for the new week).
+49. **2026-10-19 — Hover lists added to Qualified MQLs, SQLs, Opportunity, Demo Completed (BUILT, typechecked, NOT browser-verified, not deployed).** Summary page key-number cards (`src/app/(app)/page.tsx`,
+    `hoverLists` state from the mqls response: contacts_by_priority score>40, pipeline_activity.sql/opportunity details, meetings_activity held rows) + MQLs page Qualified MQLs card (`qualifiedContacts`).
+    New `HoverLead` / `LeadListBody` / `SummaryLeadPopover` in `MQLScoreCards.tsx`; right-hand cards align right. Verify visually before relying on it.
