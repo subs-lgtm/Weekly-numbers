@@ -6,6 +6,7 @@ import { TaskTextBoxes } from '@/components/shared/TaskTextBoxes'
 import { InlineMetricTable } from '@/components/InlineMetricTable'
 import { G2ClickBreakdown } from '@/components/g2/G2ClickBreakdown'
 import { G2BuyerIntent } from '@/components/g2/G2BuyerIntent'
+import { G2Influence } from '@/components/g2/G2Influence'
 import { useWeek } from '@/lib/week-context'
 import { SECTION_MAP } from '@/lib/metrics-config'
 
@@ -18,6 +19,12 @@ export default function Page() {
     <SectionShell title="G2" description="G2 reviews, ratings, buyer intent signals, and growth tracking">
       <div className="space-y-4">
         <DomainRatingSlider sectionKey="g2" weekStart={weekStart} sectionLabel="G2" />
+
+        {/* Pipeline/revenue G2 influenced — G2 Performance Analytics snapshot (not week-specific). */}
+        <div>
+          <p className="section-label first">G2 Influence</p>
+          <G2Influence />
+        </div>
 
         {/* G2 ad click analytics — manual for now (typed in from a G2 export), same pattern as
             every other InlineMetricTable section, until G2 API access lets this pull live. */}
