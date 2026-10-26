@@ -144,6 +144,18 @@ function fmtMeetingDate(iso?: string | null): string {
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+/** "Oct 26, 3:30 - 4:00 PM IST" in the viewer's time zone (HubSpot stores meeting times in UTC). */
+export function fmtMeetingSlot(startIso?: string | null, endIso?: string | null): string {
+  if (!startIso) return ''
+  const s = new Date(startIso)
+  if (isNaN(s.getTime())) return ''
+  const day = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const t = (d: Date) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const e = endIso ? new Date(endIso) : null
+  const tz = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(s).find(p => p.type === 'timeZoneName')?.value || ''
+  return `${day}, ${t(s)}${e && !isNaN(e.getTime()) ? ` - ${t(e)}` : ''} ${tz}`.trim()
+}
+
 function MeetingBookedCard({ value, prevValue, contacts }: { value: string; prevValue: string; contacts: MeetingRow[] }) {
   const delta = getDelta(value, prevValue)
   const hasValue = value !== '' && value !== undefined
@@ -302,6 +314,8 @@ export type MeetingRow = {
   id: string; name?: string; company?: string; jobTitle?: string; message?: string; platformTools?: string
   status: 'completed' | 'held' | 'no_show' | 'upcoming' | 'canceled'; meetingAt?: string | null
   title?: string; notes?: string; noteBy?: string; noteAt?: string | null; outcome?: string
+  /** Meeting-activity rows: the meeting's own title, end time and HubSpot owner; where the company name came from; contact email */
+  meetingTitle?: string; meetingEndAt?: string | null; meetingOwner?: string; companySource?: string; email?: string
 }
 export const CHANNEL_CLS: Record<string, string> = {
   'Paid Campaigns': 'bg-[#EFE3E0] text-[#6B4C4C]', Direct: 'bg-[#F6E3DE] text-[#A8483A]', 'Organic Search': 'bg-[#E1EEEE] text-[#2F6F6F]',
@@ -336,7 +350,7 @@ const MEETING_STATUS_LABEL: Record<MeetingRow['status'], { label: string; cls: s
   completed: { label: 'Completed (confirmed)', cls: 'bg-[#E6F3EA] text-[#2F6A45]' },
   no_show: { label: 'No-show', cls: 'bg-[#FBE9E6] text-[#A33A2E]' },
   held: { label: 'Held - outcome not set in HubSpot', cls: 'bg-[#FBF1E4] text-[#8A5A14]' },
-  upcoming: { label: 'Upcoming', cls: 'bg-[#E8EEF8] text-[#2D4C86]' },
+  upcoming: { label: 'Upcoming / in progress', cls: 'bg-[#E8EEF8] text-[#2D4C86]' },
   canceled: { label: 'Cancelled / rescheduled', cls: 'bg-[#EEE7DC] text-[#7A6A60]' },
 }
 
@@ -378,7 +392,7 @@ export function LeadListBody({ rows, title, footer }: { rows: HoverLead[]; title
             return (
               <li key={c.id} className="border-b border-[#EEE7DC] last:border-0 pb-2.5 last:pb-0">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">{c.company && c.company !== '—' ? c.company : '(no company)'}</span>
+                  <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">{c.company && c.company !== '—' ? c.company : '(no company in HubSpot)'}</span>
                   {c.chip && <span className={`shrink-0 rounded-full px-2 py-[1px] text-[10px] font-[600] ${c.chipCls || 'bg-[#EEE7DC] text-[#7A6A60]'}`}>{c.chip}</span>}
                 </div>
                 <p className="text-[11.5px] text-[#7A6A60] truncate">
@@ -421,17 +435,22 @@ function MeetingListBody({ rows, title, footer }: { rows: MeetingRow[]; title: s
               const snippet = uc.text.replace(/\s+/g, ' ').slice(0, 140)
               const st = MEETING_STATUS_LABEL[c.status]
               const when = fmtMeetingDate(c.meetingAt)
+              const slot = fmtMeetingSlot(c.meetingAt, c.meetingEndAt)
+              const coName = c.company && c.company !== '—' ? c.company : ''
               return (
                 <li key={c.id} className="border-b border-[#EEE7DC] last:border-0 pb-2.5 last:pb-0">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">{c.company && c.company !== '—' ? c.company : '(no company)'}</span>
+                    <span className="text-[13px] font-[700] text-[#2A1F1A] truncate">
+                      {coName || '(no company in HubSpot)'}
+                    </span>
                     <span className={`shrink-0 rounded-full px-2 py-[1px] text-[10px] font-[600] ${st.cls}`}>{st.label}</span>
                   </div>
                   <p className="text-[11.5px] text-[#7A6A60] truncate">
-                    {[c.name && c.name !== '—' ? c.name : '', c.jobTitle && c.jobTitle !== '—' ? c.jobTitle : ''].filter(Boolean).join(' · ')}
+                    {[c.name && c.name !== '—' ? c.name : '', c.jobTitle && c.jobTitle !== '—' && !/^unknown$/i.test(c.jobTitle) ? c.jobTitle : '', coName && c.companySource && c.companySource !== 'contact' ? `company from ${c.companySource}` : ''].filter(Boolean).join(' · ')}
                   </p>
+                  {c.meetingTitle && <p className="text-[11.5px] font-[600] text-[#2A1F1A] truncate" title={c.meetingTitle}>Meeting: {c.meetingTitle}</p>}
                   {(c.bookedAt || when) && (
-                    <p className="text-[10.5px] text-[#9A8C82]">{c.bookedAt ? `Booked ${fmtMeetingDate(c.bookedAt)}` : ''}{c.bookedAt && when ? ' · ' : ''}{when ? `Meeting ${when}` : ''}{c.formType ? ` · ${c.formType.split(';')[0]}` : ''}</p>
+                    <p className="text-[10.5px] text-[#9A8C82]">{c.bookedAt ? `Booked ${fmtMeetingDate(c.bookedAt)}` : ''}{c.bookedAt && when ? ' · ' : ''}{slot ? `Meeting ${slot}` : when ? `Meeting ${when}` : ''}{c.meetingOwner ? ` · Owner ${c.meetingOwner}` : ''}{c.formType ? ` · ${c.formType.split(';')[0]}` : ''}</p>
                   )}
                   <div className="mt-1 flex items-start gap-1.5">
                     <span className="shrink-0 rounded-full px-2 py-[1px] text-[10.5px] font-[600] text-white" style={{ background: theme.color }}>{theme.label}</span>

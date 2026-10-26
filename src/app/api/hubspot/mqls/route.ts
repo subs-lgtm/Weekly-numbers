@@ -217,6 +217,40 @@ async function findNewlyTaggedPartnerLeads(apiKey: string, startMs: number, endM
   return out
 }
 
+// Company name for a contact. The contact's own `company` property is often EMPTY even when HubSpot has the company associated
+// (e.g. a LTIMindtree / Futurice contact shown as "(no company)"), so fall back to the ASSOCIATED company record, then to the email
+// domain (never a free-mail domain). Batched; failures degrade to "no company" rather than breaking the page.
+type CompanySource = 'contact' | 'associated company' | 'email domain' | ''
+const FREE_MAIL = new Set(['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com', 'gmx.com', 'gmx.de', 'yandex.com', 'qq.com', '163.com'])
+async function resolveCompanyNames(apiKey: string, people: Array<{ id: string; company?: string | null; associatedcompanyid?: string | null; email?: string | null }>): Promise<Map<string, { company: string; companySource: CompanySource }>> {
+  const out = new Map<string, { company: string; companySource: CompanySource }>()
+  // HubSpot forms sometimes store a placeholder ("Unknown", "N/A") as the company - treat it as empty.
+  const isBlank = (v: any) => { const t = String(v || '').trim(); return !t || /^(unknown|n\/a|na|none|null|nil|not applicable|-+|\.+|—)$/i.test(t) }
+  const need = people.filter(p => isBlank(p.company) && p.associatedcompanyid)
+  const coIds = Array.from(new Set(need.map(p => String(p.associatedcompanyid))))
+  const coInfo = new Map<string, { name: string; domain: string }>()
+  for (let i = 0; i < coIds.length; i += 100) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const res = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/companies/batch/read`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ properties: ['name', 'domain'], inputs: coIds.slice(i, i + 100).map(id => ({ id })) }) })
+        if (res.status === 429 || res.status >= 500) { await new Promise(r => setTimeout(r, 800 * (attempt + 1))); continue }
+        if (res.ok) for (const c of (await res.json()).results || []) coInfo.set(String(c.id), { name: String(c.properties?.name || '').trim(), domain: String(c.properties?.domain || '').trim() })
+        break
+      } catch { await new Promise(r => setTimeout(r, 800)) }
+    }
+  }
+  for (const p of people) {
+    const own = String(p.company || '').trim()
+    if (!isBlank(own)) { out.set(String(p.id), { company: own, companySource: 'contact' }); continue }
+    const assoc = p.associatedcompanyid ? coInfo.get(String(p.associatedcompanyid)) : null
+    if (assoc?.name) { out.set(String(p.id), { company: assoc.name, companySource: 'associated company' }); continue }
+    if (assoc?.domain) { out.set(String(p.id), { company: assoc.domain, companySource: 'associated company' }); continue }
+    const dom = String(p.email || '').split('@')[1]?.toLowerCase() || ''
+    out.set(String(p.id), dom && !FREE_MAIL.has(dom) ? { company: dom, companySource: 'email domain' } : { company: '', companySource: '' })
+  }
+  return out
+}
+
 // Demo Booked / Demo Completed from the HubSpot MEETINGS object (not hs_lead_status, not lifecycle stage).
 // For each lead that has a meeting we read its associated meetings and take the latest one: outcome
 // (COMPLETED / NO_SHOW / CANCELED / RESCHEDULED / SCHEDULED), when it is/was, and the SDR's notes
@@ -224,6 +258,7 @@ async function findNewlyTaggedPartnerLeads(apiKey: string, startMs: number, endM
 // outcome in HubSpot (Sep 2026: 0 of 131 meetings were marked COMPLETED), so a meeting whose time has PASSED and was not
 // cancelled / rescheduled / marked no-show counts as HELD (demo took place). Confirmed COMPLETED is reported separately.
 type MeetingStatus = 'completed' | 'held' | 'no_show' | 'canceled' | 'upcoming'
+const meetingEndMs = (p: any, startMs: number) => Date.parse(p.hs_meeting_end_time || '') || (startMs + 30 * 60000)
 async function fetchMeetingDetails(apiKey: string, contactIds: string[], ownerMap: Record<string, string>) {
   const post = async (url: string, body: any) => {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -246,7 +281,7 @@ async function fetchMeetingDetails(apiKey: string, contactIds: string[], ownerMa
   const ids = Array.from(all)
   for (let i = 0; i < ids.length; i += 100) {
     const data = await post('/crm/v3/objects/meetings/batch/read', {
-      properties: ['hs_meeting_outcome', 'hs_meeting_start_time', 'hs_timestamp', 'hs_meeting_title', 'hs_meeting_body', 'hs_internal_meeting_notes', 'hubspot_owner_id', 'hs_lastmodifieddate'],
+      properties: ['hs_meeting_outcome', 'hs_meeting_start_time', 'hs_meeting_end_time', 'hs_timestamp', 'hs_meeting_title', 'hs_meeting_body', 'hs_internal_meeting_notes', 'hubspot_owner_id', 'hs_lastmodifieddate'],
       inputs: ids.slice(i, i + 100).map(id => ({ id })),
     })
     for (const m of data.results || []) meetings.set(String(m.id), m.properties || {})
@@ -288,7 +323,8 @@ async function fetchMeetingDetails(apiKey: string, contactIds: string[], ownerMa
       if (o === 'COMPLETED') return 'completed'
       if (o === 'NO_SHOW') return 'no_show'
       if (o === 'CANCELED' || o === 'RESCHEDULED') return 'canceled'
-      return t > Date.now() ? 'upcoming' : 'held'
+      // A meeting only counts as held once it has ENDED (a meeting in progress is still "upcoming"). No end time: assume 30 min.
+      return meetingEndMs(p, t) > Date.now() ? 'upcoming' : 'held'
     }
     const statuses = list.map(x => statusOf(x.p, x.t))
     // Contact-level status: a confirmed completion wins, then a held meeting, then no-show, then upcoming, else cancelled only.
@@ -336,7 +372,7 @@ function isMarketingLead(p: any): boolean {
   const forms = String(p.lead_form_type || '').split(';').map((x: string) => x.trim()).filter(Boolean)
   if (!forms.some(f => f !== 'Agent Studio')) return false
   const email = String(p.email || '').toLowerCase()
-  if (email.includes('lyzr.ai')) return false
+  if (email.includes('lyzr.ai') || email.includes('lyzr.com')) return false // Lyzr's own staff (both domains)
   const name = `${p.firstname || ''} ${p.lastname || ''}`
   if (/\btest\b|\(ignore\)/i.test(name) || /^lyzr/i.test(String(p.company || ''))) return false
   return true
@@ -362,7 +398,7 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
     }
     throw new Error(`HubSpot ${url} failed: ${last}`)
   }
-  const MP = ['hs_meeting_outcome', 'hs_meeting_start_time', 'hs_timestamp', 'hs_createdate', 'hs_meeting_title', 'hs_internal_meeting_notes', 'hubspot_owner_id']
+  const MP = ['hs_meeting_outcome', 'hs_meeting_start_time', 'hs_meeting_end_time', 'hs_timestamp', 'hs_createdate', 'hs_meeting_title', 'hs_internal_meeting_notes', 'hubspot_owner_id']
   const searchMeetings = async (prop: 'hs_createdate' | 'hs_timestamp') => {
     const out: any[] = []
     let after: string | undefined
@@ -391,9 +427,11 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
   const cids = Array.from(new Set(Array.from(contactsOf.values()).flat()))
   const contacts = new Map<string, any>()
   for (let i = 0; i < cids.length; i += 100) {
-    const d = await post('/crm/v3/objects/contacts/batch/read', { properties: ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'hs_object_source_detail_1', 'hs_analytics_source', 'utm_source', 'utm_medium', 'recent_conversion_event_name', 'lead_campaign_name', 'hs_analytics_last_url'], inputs: cids.slice(i, i + 100).map(id => ({ id })) })
+    const d = await post('/crm/v3/objects/contacts/batch/read', { properties: ['email', 'firstname', 'lastname', 'company', 'associatedcompanyid', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'hs_object_source_detail_1', 'hs_analytics_source', 'utm_source', 'utm_medium', 'recent_conversion_event_name', 'lead_campaign_name', 'hs_analytics_last_url'], inputs: cids.slice(i, i + 100).map(id => ({ id })) })
     for (const c of d.results || []) if (isMarketingLead(c.properties || {})) contacts.set(String(c.id), c.properties || {})
   }
+
+  const companies = await resolveCompanyNames(apiKey, Array.from(contacts.entries()).map(([id, p]) => ({ id, company: p.company, associatedcompanyid: p.associatedcompanyid, email: p.email })))
 
   // SDR notes: latest Note record written by a person on the contact (the meeting's own notes/body are empty or just the Teams invite).
   const noteIdsOf = new Map<string, string[]>()
@@ -415,7 +453,7 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
     .map((p: any) => ({ p, t: Date.parse(p.hs_timestamp || '') || 0, body: strip(p.hs_note_body) }))
     .filter(x => x.body && x.p.hubspot_owner_id).sort((a, b) => b.t - a.t)[0] || null
 
-  type Agg = { booked: boolean; held: boolean; confirmed: boolean; noShow: boolean; upcoming: boolean; heldAt: number; bookedMeetingAt: number; bookedAt: number; internalNotes: string; owner: string }
+  type Agg = { booked: boolean; held: boolean; confirmed: boolean; noShow: boolean; upcoming: boolean; heldAt: number; heldEnd: number; heldTitle: string; bookedMeetingAt: number; bookedEnd: number; bookedTitle: string; bookedOwner: string; bookedAt: number; internalNotes: string; owner: string }
   const agg = new Map<string, Agg>()
   const now = Date.now()
   meetings.forEach((p, mid) => {
@@ -425,13 +463,16 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
     const createdAt = Date.parse(p.hs_createdate || '') || 0
     const isBooked = createdAt >= startMs && createdAt < endMs
     const inStartRange = startAt >= startMs && startAt < endMs
-    const isHeld = inStartRange && startAt < now && outcome !== 'NO_SHOW'
+    const endAt = meetingEndMs(p, startAt)
+    // Held = the meeting has ENDED (an in-progress meeting is not held yet) and was not marked no-show.
+    const isHeld = inStartRange && endAt < now && outcome !== 'NO_SHOW'
+    const title = strip(p.hs_meeting_title)
     const isNoShow = inStartRange && outcome === 'NO_SHOW'
     for (const cid of contactsOf.get(mid) || []) {
       if (!contacts.has(cid)) continue
-      const a = agg.get(cid) || { booked: false, held: false, confirmed: false, noShow: false, upcoming: false, heldAt: 0, bookedMeetingAt: 0, bookedAt: 0, internalNotes: '', owner: '' }
-      if (isBooked && outcome !== 'NO_SHOW') { a.booked = true; if (createdAt >= a.bookedAt) { a.bookedAt = createdAt; a.bookedMeetingAt = startAt } if (startAt > now) a.upcoming = true }
-      if (isHeld) { a.held = true; if (outcome === 'COMPLETED') a.confirmed = true; if (startAt >= a.heldAt) { a.heldAt = startAt; a.owner = ownerMap[String(p.hubspot_owner_id)] || a.owner } }
+      const a = agg.get(cid) || { booked: false, held: false, confirmed: false, noShow: false, upcoming: false, heldAt: 0, heldEnd: 0, heldTitle: '', bookedMeetingAt: 0, bookedEnd: 0, bookedTitle: '', bookedOwner: '', bookedAt: 0, internalNotes: '', owner: '' }
+      if (isBooked && outcome !== 'NO_SHOW') { a.booked = true; if (createdAt >= a.bookedAt) { a.bookedAt = createdAt; a.bookedMeetingAt = startAt; a.bookedEnd = endAt; a.bookedTitle = title; a.bookedOwner = ownerMap[String(p.hubspot_owner_id)] || '' } if (endAt > now) a.upcoming = true }
+      if (isHeld) { a.held = true; if (outcome === 'COMPLETED') a.confirmed = true; if (startAt >= a.heldAt) { a.heldAt = startAt; a.heldEnd = endAt; a.heldTitle = title; a.owner = ownerMap[String(p.hubspot_owner_id)] || a.owner } }
       if (isNoShow) a.noShow = true
       const inotes = strip(p.hs_internal_meeting_notes)
       if (inotes && !a.internalNotes) a.internalNotes = inotes
@@ -446,10 +487,16 @@ async function fetchMeetingActivity(apiKey: string, startMs: number, endMs: numb
     const ln = a.internalNotes ? null : latestNote(cid)
     const status = a.held ? (a.confirmed ? 'completed' : 'held') : a.noShow ? 'no_show' : (a.upcoming ? 'upcoming' : 'held')
     const sourceCat = c.lead_source_category || ''
+    const co = companies.get(cid) || { company: '', companySource: '' as CompanySource }
     details.push({
       id: cid,
-      name: [c.firstname, c.lastname].filter(Boolean).join(' ') || '—',
-      company: c.company || '—', jobTitle: c.jobtitle || '—',
+      name: (() => { const n = [c.firstname, c.lastname].filter(Boolean).join(' ').trim(); return n && !/^unknown$/i.test(n) ? n : (String(c.email || '').split('@')[0].replace(/[._]+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()) || '—') })(),
+      email: c.email || '',
+      company: co.company || '—', companySource: co.companySource, jobTitle: c.jobtitle || '—',
+      // Which meeting this row is about: its title ("Lyzr/ Futurice kick off"), end time and the HubSpot owner of the meeting.
+      meetingTitle: a.held ? a.heldTitle : (a.bookedTitle || a.heldTitle),
+      meetingEndAt: (() => { const e = a.held ? a.heldEnd : (a.bookedEnd || a.heldEnd); return e ? new Date(e).toISOString() : null })(),
+      meetingOwner: a.held ? a.owner : (a.bookedOwner || a.owner),
       message: (c.message || '').trim().slice(0, 600), platformTools: (c.platform_tools || '').trim(),
       ads: sourceCat === 'Paid Campaigns' || sourceCat === 'Paid Search / Paid Social',
       formType: String(c.lead_form_type || ''), createdVia: String(c.hs_object_source_detail_1 || ''),
@@ -494,11 +541,12 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
     }
     throw new Error(`HubSpot ${url} failed: ${last}`)
   }
-  const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity', 'hs_analytics_source', 'utm_source', 'utm_medium', 'recent_conversion_event_name', 'lead_campaign_name', 'hs_analytics_last_url', 'createdate']
+  const CP = ['email', 'firstname', 'lastname', 'company', 'associatedcompanyid', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity', 'hs_analytics_source', 'utm_source', 'utm_medium', 'recent_conversion_event_name', 'lead_campaign_name', 'hs_analytics_last_url', 'createdate']
   const toRow = (id: string, c: any, extra: any = {}) => {
     const src = c.lead_source_category || ''
     return {
       id, name: [c.firstname, c.lastname].filter(Boolean).join(' ') || '—', company: c.company || '—', jobTitle: c.jobtitle || '—',
+      email: c.email || '', companyId: c.associatedcompanyid || '',
       message: (c.message || '').trim().slice(0, 600), platformTools: (c.platform_tools || '').trim(),
       ads: src === 'Paid Campaigns' || src === 'Paid Search / Paid Social', formType: String(c.lead_form_type || ''),
       // Acquisition channel (paid signals first, then lead source category, then HubSpot original source) - same rule as the Executive Dashboard.
@@ -585,6 +633,13 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
   }
   // A lead that moved on to Opportunity (marketing-sourced deal created in the period) is also an SQL for that period -
   // it passed through (or skipped) the SQL stage, so SQL = entered the SQL stage OR got an Opportunity in the period.
+  // Fill empty company names from the associated company record (see resolveCompanyNames), then drop the helper fields.
+  const coMap = await resolveCompanyNames(apiKey, [...sqlRows, ...oppRows].map(r => ({ id: r.id, company: r.company === '—' ? '' : r.company, associatedcompanyid: r.companyId, email: r.email })))
+  for (const r of [...sqlRows, ...oppRows]) {
+    const co = coMap.get(String(r.id))
+    if (co?.company) { r.company = co.company; r.companySource = co.companySource }
+    delete r.companyId; delete r.email
+  }
   const sqlById = new Map<string, any>(sqlRows.map(r => [r.id, r]))
   for (const o of oppRows) if (!sqlById.has(o.id)) sqlById.set(o.id, { ...o, via: 'opportunity' })
   const sqlAll = Array.from(sqlById.values())
@@ -617,7 +672,7 @@ async function computeGET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v21_all' : 'v21'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v22_all' : 'v22'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
 
@@ -640,6 +695,7 @@ async function computeGET(req: NextRequest) {
       'firstname',
       'lastname',
       'company',
+      'associatedcompanyid',
       'jobtitle',
       'hs_lead_status',
       'hs_latest_meeting_activity',
@@ -874,6 +930,7 @@ async function computeGET(req: NextRequest) {
     await applyPriorityMemory(contacts)
     const autoLifecycleIds = await flagAutoLifecycle(apiKey, contacts)
 
+    const mainCompanies = await resolveCompanyNames(apiKey, contacts.map(c => ({ id: String(c.id), company: c.properties?.company, associatedcompanyid: c.properties?.associatedcompanyid, email: c.properties?.email })))
     for (const c of contacts) {
       const props = c.properties || {}
       const cat = props.lyzr_lead_score_category || ''
@@ -894,7 +951,8 @@ async function computeGET(req: NextRequest) {
         id: c.id,
         name: [props.firstname, props.lastname].filter(Boolean).join(' ') || '—',
         email: props.email || '—',
-        company: props.company || '—',
+        company: mainCompanies.get(String(c.id))?.company || props.company || '—',
+        companySource: mainCompanies.get(String(c.id))?.companySource || '',
         jobTitle: props.jobtitle || '—',
         score: parseFloat(props.lyzr_lead_score || '0'),
         formType: (props.lead_form_type?.split(';')[0] || 'Other').trim(),
@@ -1353,7 +1411,7 @@ export async function GET(req: NextRequest) {
   const slim = searchParams.get('slim') === '1'
   const includePipeline = searchParams.get('includePipeline') === '1'
   const includeClosedWon = searchParams.get('includeClosedWon') === '1'
-  const prefix = `${mode === 'all' ? 'v21_all' : 'v21'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const prefix = `${mode === 'all' ? 'v22_all' : 'v22'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
   const out = (r: any) => {
     if (!slim) return NextResponse.json(r)
     const { contacts_by_priority, ...rest } = r

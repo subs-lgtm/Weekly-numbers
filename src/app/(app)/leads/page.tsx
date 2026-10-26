@@ -6,7 +6,7 @@ import { SECTION_MAP } from '@/lib/metrics-config'
 import { useWeek } from '@/lib/week-context'
 import { useWeeklyMetrics, usePrevWeekMetrics } from '@/hooks/useWeeklyMetrics'
 import { LeadFunnelCard } from '@/components/leads/LeadFunnelCard'
-import { CHANNEL_CLS, type HoverLead } from '@/components/mql/MQLScoreCards'
+import { CHANNEL_CLS, fmtMeetingSlot, type HoverLead } from '@/components/mql/MQLScoreCards'
 import { LeadCategoriesPerformance } from '@/components/leads/LeadCategoriesPerformance'
 import { LeadsComparisonCards } from '@/components/leads/LeadsComparisonCards'
 import { LeadsWoWChart } from '@/components/leads/LeadsWoWChart'
@@ -95,8 +95,8 @@ function LeadsPageInner() {
           lists: {
             sql: sqlRows.map((r: any) => lead(r, [r.via === 'opportunity' ? 'Moved to Opportunity' : 'Entered SQL', sd(r.at)].filter(Boolean).join(' '))),
             opportunity: oppRows.map((r: any) => lead(r, [r.dealName, r.dealAmount ? '$' + Math.round(r.dealAmount).toLocaleString() : '', r.dealStage, sd(r.at)].filter(Boolean).join(' · '))),
-            demoBooked: bookedRows.map((r: any) => lead(r, `Booked ${sd(r.bookedAt)} · Meeting ${sd(r.meetingAt)}`)),
-            demoCompleted: doneRows.map((r: any) => lead(r, `Meeting ${sd(r.meetingAt)}${r.status === 'completed' ? ' · confirmed completed' : ' · outcome not set'}`)),
+            demoBooked: bookedRows.map((r: any) => lead(r, [r.meetingTitle, `Booked ${sd(r.bookedAt)} · Meeting ${fmtMeetingSlot(r.meetingAt, r.meetingEndAt) || sd(r.meetingAt)}`, r.meetingOwner ? `Owner ${r.meetingOwner}` : ''].filter(Boolean).join(' · '))),
+            demoCompleted: doneRows.map((r: any) => lead(r, [r.meetingTitle, `Meeting ${fmtMeetingSlot(r.meetingAt, r.meetingEndAt) || sd(r.meetingAt)}${r.status === 'completed' ? ' · confirmed completed' : ' · outcome not set'}`, r.meetingOwner ? `Owner ${r.meetingOwner}` : ''].filter(Boolean).join(' · '))),
           },
         })
       })
