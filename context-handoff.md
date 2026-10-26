@@ -423,19 +423,19 @@ Chronological, approximate dates from commit context / explicit dates mentioned 
     source and are blank. Gotcha hit: the page opens on the current week, so data seeded only into the previous
     week showed as empty.
 
-## What's currently in progress — accurate as of 2026-10-05
+## What's currently in progress — accurate as of 2026-10-26
 
-Nothing uncommitted. G2 work is shipped (item 32). Open G2 follow-ups:
-- After the next Monday G2 sheet refresh, overwrite the `2026-09-28` Clicks/Spend (currently a copy of the Sep 17-28
-  snapshot) and seed the new week's Buyer Intent / topics / competitors.
-- Impressions and Conversions need a manual entry from the G2 portal (no data source).
+Nothing uncommitted. Entry 55 (unified SQL / Opportunity definitions) is committed (f5c41fe) and deployed to production
+(`weekly-marketing-numbers-82zgkpmrn`, aliased to weekly-marketing-numbers.vercel.app). Not browser-verified behind the login.
+Open items: entry 49 hovers were never browser-verified; stash@{0} "Demo Completed column (meetings-based)" is parked until
+meeting outcomes are recorded; G2 follow-ups from item 32 (Clicks/Spend overwrite, Impressions/Conversions manual entry).
 
-## Current machine state (accurate as of 2026-10-05 — re-check before trusting)
+## Current machine state (accurate as of 2026-10-26 — re-check before trusting)
 
-- Active clone is `/Users/mothilal-kanagaraj/Desktop/dashboard-project` (linked to Vercel project
-  `weekly-marketing-numbers`). `~/dashboard-project` is an older copy without `.vercel` — don't deploy from it.
-- Deploy from inside the project dir only: running `vercel` from another cwd tries to create a new project.
-- `PREVIEW_BYPASS = false`. Last pushed commit on `main`: `535461d`.
+- Active clone is `/Users/mothilal-kanagaraj/Desktop/dashboard-project` (linked to Vercel project `weekly-marketing-numbers`).
+  `~/dashboard-project` is stale — don't deploy from it. Never run `vercel` from `~/API - Keys` (tries to create a new project).
+- Vercel is NOT Git-connected: pushing to GitHub does not deploy; deploy with `vercel --prod` from inside the project dir.
+- `PREVIEW_BYPASS = false`.
 
 ## Exact next steps
 
