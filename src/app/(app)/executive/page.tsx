@@ -172,7 +172,7 @@ export default function ExecutiveDashboardPage() {
         <section className="space-y-3">
           <div>
             <h2 className="text-[15px] font-[700] text-[#2A1F1A]">Business Flow Performance</h2>
-            <p className="card-note">What did we generate, and what business outcomes occurred, during {flowMonth.label}? Monthly view, compared with the previous month. Static once the month closes.</p>
+            <p className="card-note">What did the leads that came in during {flowMonth.label} turn into? Cohort view (leads created that month), compared with the previous month; SQL = reached SQL, Opportunity = marketing-sourced deal - same definitions as the Cohort table below. The Summary/MQL pages count activity in a period instead (including earlier months' leads).</p>
           </div>
           <BusinessFlowKPIRow data={flow} loading={flowLoading} />
         </section>

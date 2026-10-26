@@ -494,7 +494,7 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
     }
     throw new Error(`HubSpot ${url} failed: ${last}`)
   }
-  const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity', 'hs_analytics_source', 'utm_source', 'utm_medium', 'recent_conversion_event_name', 'lead_campaign_name', 'hs_analytics_last_url']
+  const CP = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'message', 'platform_tools', 'lead_source_category', 'lead_form_type', 'lifecyclestage', 'hs_v2_date_entered_opportunity', 'hs_analytics_source', 'utm_source', 'utm_medium', 'recent_conversion_event_name', 'lead_campaign_name', 'hs_analytics_last_url', 'createdate']
   const toRow = (id: string, c: any, extra: any = {}) => {
     const src = c.lead_source_category || ''
     return {
@@ -502,7 +502,9 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
       message: (c.message || '').trim().slice(0, 600), platformTools: (c.platform_tools || '').trim(),
       ads: src === 'Paid Campaigns' || src === 'Paid Search / Paid Social', formType: String(c.lead_form_type || ''),
       // Acquisition channel (paid signals first, then lead source category, then HubSpot original source) - same rule as the Executive Dashboard.
-      channel: resolveChannel(c), playbook: playbookOf(c), campaign: String(c.lead_campaign_name || '').trim(), ...extra,
+      channel: resolveChannel(c), playbook: playbookOf(c), campaign: String(c.lead_campaign_name || '').trim(),
+      // Month the LEAD was created (YYYY-MM) - powers the 'this month's leads vs earlier months' bridge between the activity and cohort views.
+      createdMonth: String(c.createdate || '').slice(0, 7), ...extra,
     }
   }
 
@@ -586,9 +588,10 @@ async function fetchPipelineActivity(apiKey: string, startMs: number, endMs: num
   const sqlById = new Map<string, any>(sqlRows.map(r => [r.id, r]))
   for (const o of oppRows) if (!sqlById.has(o.id)) sqlById.set(o.id, { ...o, via: 'opportunity' })
   const sqlAll = Array.from(sqlById.values())
+  const byMonth = (rows: any[]) => rows.reduce((m: Record<string, number>, r: any) => { const k = r.createdMonth || 'unknown'; m[k] = (m[k] || 0) + 1; return m }, {})
   return {
-    sql: { count: sqlAll.length, entered_sql_stage: sqlRows.length, via_opportunity: sqlAll.length - sqlRows.length, details: sqlAll },
-    opportunity: { count: oppRows.length, deals: dealCount, value: dealValue, details: oppRows },
+    sql: { count: sqlAll.length, entered_sql_stage: sqlRows.length, via_opportunity: sqlAll.length - sqlRows.length, byCreatedMonth: byMonth(sqlAll), details: sqlAll },
+    opportunity: { count: oppRows.length, deals: dealCount, value: dealValue, byCreatedMonth: byMonth(oppRows), details: oppRows },
   }
 }
 
@@ -614,7 +617,7 @@ async function computeGET(req: NextRequest) {
 
     // Cache key must vary by includePipeline/includeClosedWon — otherwise a cached response
     // from one flag combination could be served for a request that explicitly asked for the other.
-    const cacheKeyPrefix = `${mode === 'all' ? 'v20_all' : 'v20'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+    const cacheKeyPrefix = `${mode === 'all' ? 'v21_all' : 'v21'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
 
     // Check cache first (skip if nocache=1)
 
@@ -1350,7 +1353,7 @@ export async function GET(req: NextRequest) {
   const slim = searchParams.get('slim') === '1'
   const includePipeline = searchParams.get('includePipeline') === '1'
   const includeClosedWon = searchParams.get('includeClosedWon') === '1'
-  const prefix = `${mode === 'all' ? 'v20_all' : 'v20'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
+  const prefix = `${mode === 'all' ? 'v21_all' : 'v21'}${includePipeline ? '_pipeline' : ''}${includeClosedWon ? '_closedwon' : ''}`
   const out = (r: any) => {
     if (!slim) return NextResponse.json(r)
     const { contacts_by_priority, ...rest } = r

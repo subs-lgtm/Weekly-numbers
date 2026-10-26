@@ -23,6 +23,8 @@ type Props = {
   funnel: Funnel; monthlyFunnel?: Funnel; activity?: Activity; monthlyActivity?: Activity
   /** Who is behind the SQL / Opportunity counts (month-to-date when available, else the selected week), with channel source */
   sqlLeads?: HoverLead[]; oppLeads?: HoverLead[]
+  /** Month-to-date activity split by the month each lead was CREATED, to reconcile with the Cohort Funnel Table */
+  bridge?: { month: string; sql: Record<string, number>; opportunity: Record<string, number> }
 }
 
 // Demo Booked / Demo Completed rows removed 2026-09-07 -- those are hs_lead_status concepts,
@@ -49,7 +51,7 @@ const TOOLTIPS: Record<string, string> = {
 /** "Consolidated MQL Lifecycle Status" section (was "MQL Journey") — pure lifecyclestage
  *  progression: Total MQLs -> SQL -> Opportunity -> Customer. .card/.funnel-wrap/.funnel-stage
  *  structure matches the reference HTML. */
-export function MQLJourneyFunnel({ funnel, monthlyFunnel, activity, monthlyActivity, sqlLeads, oppLeads }: Props) {
+export function MQLJourneyFunnel({ funnel, monthlyFunnel, activity, monthlyActivity, sqlLeads, oppLeads, bridge }: Props) {
   // Use monthlyFunnel (MTD) as the primary funnel if available, fallback to weekly funnel
   const primaryFunnel = monthlyFunnel || funnel
   const secondaryFunnel = monthlyFunnel ? funnel : undefined
@@ -102,6 +104,10 @@ export function MQLJourneyFunnel({ funnel, monthlyFunnel, activity, monthlyActiv
           const dropoff = i === 0 ? null : 100 - convPct
           const leadRows = stage.key === 'sql' ? sqlLeads : stage.key === 'opportunity' ? oppLeads : undefined
           const hasHover = !!leadRows && leadRows.length > 0
+          // Bridge to the Cohort Funnel Table: of this month's SQL / Opportunity, how many came from leads created THIS month vs earlier.
+          const split = bridge && monthlyFunnel && (stage.key === 'sql' || stage.key === 'opportunity') ? bridge[stage.key as 'sql' | 'opportunity'] : null
+          const fromThisMonth = split ? (split[bridge!.month] || 0) : 0
+          const fromEarlier = split ? Object.values(split).reduce((a, b) => a + b, 0) - fromThisMonth : 0
 
           return (
             <div className={cn('relative', hasHover && 'group/stage hover:z-40 focus-within:z-40')} key={stage.key} tabIndex={hasHover ? 0 : undefined}>
@@ -136,6 +142,11 @@ export function MQLJourneyFunnel({ funnel, monthlyFunnel, activity, monthlyActiv
               </div>
               <div className="funnel-drop">{dropoff === null ? '—' : `${dropoff}%`}</div>
             </div>
+            {split && (fromThisMonth + fromEarlier) > 0 && (
+              <p className="text-[10.5px] text-[#7A6A60] leading-snug pl-[164px] -mt-1 mb-1">
+                {fromThisMonth} from leads created this month (the Cohort Funnel Table&apos;s number) + {fromEarlier} from earlier months&apos; leads
+              </p>
+            )}
             {hasHover && (
               <div className="hidden group-hover/stage:block group-focus-within/stage:block absolute left-0 sm:left-[140px] top-full z-50 pt-1 w-[440px] max-w-[88vw]">
                 <LeadListBody

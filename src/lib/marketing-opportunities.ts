@@ -180,3 +180,34 @@ export async function fetchOpportunityDetails(apiKey: string, candidates: Array<
   }
   return out
 }
+
+
+/**
+ * Contacts whose CURRENT lifecycle stage was copied by HubSpot from their company record (history source = COMPANIES,
+ * "LifecycleChangeToContactUpdate: triggered by companyId") - no person or workflow moved them, so they must not count as
+ * having progressed. Shared by the Cohort Funnel Table, the Business Flow cards and the MQL page so "SQL" means the same thing
+ * everywhere (2026-10-26 unification).
+ */
+export async function companyCopiedStageIds(apiKey: string, contactIds: string[]): Promise<Set<string>> {
+  const flagged = new Set<string>()
+  try {
+    for (let i = 0; i < contactIds.length; i += 50) {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const res = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/batch/read`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ propertiesWithHistory: ['lifecyclestage'], properties: ['lifecyclestage'], inputs: contactIds.slice(i, i + 50).map(id => ({ id: String(id) })) }),
+        })
+        if (res.status === 429 || res.status >= 500) { await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); continue }
+        if (!res.ok) break
+        const data = await res.json()
+        for (const r of data.results || []) {
+          const latest = (r.propertiesWithHistory?.lifecyclestage || [])[0]
+          if (latest?.sourceType === 'COMPANIES' && String(latest?.sourceId || '').startsWith('LifecycleChangeToContactUpdate')) flagged.add(String(r.id))
+        }
+        break
+      }
+    }
+  } catch { /* best effort: on failure nothing is excluded (never inflates the number silently - the caller still caches only on success paths) */ }
+  return flagged
+}

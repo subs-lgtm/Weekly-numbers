@@ -112,7 +112,7 @@ export function CohortFunnelTable({ cohorts, loading }: { cohorts: Cohort[]; loa
   return (
     <div className="card overflow-x-auto">
       <div className="card-head">
-        <span className="card-title">Cohort Funnel Table</span>
+        <span className="card-title">Cohort Funnel Table <span className="font-[400] text-[#7A6A60] text-[12px]">- where each month&apos;s leads ended up</span></span>
         <MetricBadge kind="cohort" />
       </div>
       {loading ? (
@@ -168,7 +168,7 @@ export function CohortFunnelTable({ cohorts, loading }: { cohorts: Cohort[]; loa
           </tbody>
         </table>
       )}
-      <p className="text-[11px] text-[#7A6A60] mt-3">Each row is a fixed group of contacts — the ones created that month via Book a Demo (matches the existing MQL dashboard exactly). SQLs/Opportunities/Customers Won show how many of that SAME group are CURRENTLY at each stage right now — the group size never changes, but this breakdown updates live as they progress. This is the same number you'd get filtering HubSpot by Create Date + Lead Form Type + Lifecycle Stage directly.</p>
+      <p className="text-[11px] text-[#7A6A60] mt-3">Each row is a fixed group of contacts &mdash; the ones created that month via Book a Demo (matches the MQL dashboard exactly). <strong>SQLs</strong> = how many of that group have reached SQL (including those who have since become an Opportunity; stages HubSpot merely copied from the company record don&apos;t count). <strong>Opportunities</strong> = group members with a marketing-sourced Studio deal. <strong>So SQL &ge; Opportunity and SQL&rarr;Opp can never exceed 100%.</strong> This table follows only the leads that CAME IN that month; the Summary and MQL pages count what HAPPENED in a period, including earlier months&apos; leads &mdash; the MQL page&apos;s Consolidated table shows the split (&ldquo;from this month&apos;s leads + from earlier months&rdquo;) so the two always reconcile.</p>
       <p className="text-[11px] text-[#7A6A60] mt-1">* Dimmed rates belong to immature cohorts (0–60 days old) — still developing, don’t compare directly against mature cohorts.</p>
     </div>
   )

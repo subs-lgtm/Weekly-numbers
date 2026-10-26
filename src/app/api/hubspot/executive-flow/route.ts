@@ -31,7 +31,7 @@ import { NextRequest, NextResponse } from 'next/server'
  *                                     trend chart) instead of a single current/previous pair
  */
 
-import { classifyOutcomes, resolveChannel } from '@/lib/marketing-opportunities'
+import { classifyOutcomes, resolveChannel, companyCopiedStageIds } from '@/lib/marketing-opportunities'
 
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
 
@@ -74,7 +74,7 @@ async function getCached(key: string, end: string): Promise<any | null> {
   try {
     const db = getCacheDb()
     if (!db) return null
-    const doc = await db.collection('executive_flow_cache_v5').doc(key).get()
+    const doc = await db.collection('executive_flow_cache_v6').doc(key).get()
     if (!doc.exists) return null
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
@@ -90,7 +90,7 @@ async function setCache(key: string, result: any): Promise<void> {
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('executive_flow_cache_v5').doc(key).set({ result, cachedAt: new Date() })
+    await db.collection('executive_flow_cache_v6').doc(key).set({ result, cachedAt: new Date() })
   } catch {}
 }
 
@@ -128,21 +128,25 @@ async function countContactFlow(apiKey: string, startMs: number, endMs: number) 
     await new Promise(r => setTimeout(r, 150))
   }
 
-  let sqlsCreated = 0
+  const sqlIds: string[] = []
   const dealCandidates: Array<{ id: string; channel: string }> = []
   for (const c of results) {
-    if (SQL_EXACT.has(c.properties?.lifecyclestage || '')) sqlsCreated++
+    if (SQL_EXACT.has(c.properties?.lifecyclestage || '')) sqlIds.push(String(c.id))
     if (parseInt(c.properties?.num_associated_deals || '0', 10) > 0) dealCandidates.push({ id: c.id, channel: resolveChannel(c.properties || {}) })
   }
-  return { mqlsCreated: results.length, sqlsCreated, dealCandidates }
+  return { mqlsCreated: results.length, sqlIds, dealCandidates }
 }
 
 async function countAllFlow(apiKey: string, startMs: number, endMs: number) {
-  const { mqlsCreated, sqlsCreated, dealCandidates } = await countContactFlow(apiKey, startMs, endMs)
+  const { mqlsCreated, sqlIds, dealCandidates } = await countContactFlow(apiKey, startMs, endMs)
   // Opportunities / Customers Won use the EXACT same definition as the Cohort Funnel Table
   // (src/lib/marketing-opportunities.ts): contacts created in the period via Book a Demo that have
   // a marketing-sourced Studio deal; Customers Won = those whose qualifying deal is Closed Won.
   const outcome = await classifyOutcomes(apiKey, dealCandidates)
+  // UNIFIED DEFINITION (2026-10-26, same as the Cohort Funnel Table and the MQL page): SQLs = leads that REACHED SQL =
+  // currently at SQL (stage not merely copied from the company) without a deal + leads with a marketing-sourced deal.
+  const copied = await companyCopiedStageIds(apiKey, sqlIds)
+  const sqlsCreated = sqlIds.filter(id => !copied.has(id) && !outcome.opportunityContactIds.has(id)).length + outcome.opportunityCount
   return { mqlsCreated, sqlsCreated, opportunitiesCreated: outcome.opportunityCount, customersWon: outcome.won }
 }
 

@@ -96,7 +96,7 @@ async function getCache(period: string, periodClosed: boolean): Promise<any | nu
   try {
     const db = getCacheDb()
     if (!db) return null
-    const doc = await db.collection('executive_cohort_cache_v10').doc(period).get()
+    const doc = await db.collection('executive_cohort_cache_v11').doc(period).get()
     if (!doc.exists) return null
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
@@ -108,7 +108,7 @@ async function setCache(period: string, result: any): Promise<void> {
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('executive_cohort_cache_v10').doc(period).set({ result, cachedAt: new Date() })
+    await db.collection('executive_cohort_cache_v11').doc(period).set({ result, cachedAt: new Date() })
   } catch {}
 }
 
@@ -136,7 +136,7 @@ async function searchContacts(apiKey: string, filters: any[], properties: string
   return results
 }
 
-import { classifyOutcomes, resolveChannel } from '@/lib/marketing-opportunities'
+import { classifyOutcomes, resolveChannel, companyCopiedStageIds } from '@/lib/marketing-opportunities'
 
 /** One month's cohort: createdate + Book a Demo (the dashboard's MQL definition), current-stage snapshot. */
 async function fetchCohort(apiKey: string, monthStartMs: number, monthEndMs: number) {
@@ -161,7 +161,10 @@ async function fetchCohort(apiKey: string, monthStartMs: number, monthEndMs: num
     if (parseInt(c.properties?.num_associated_deals || '0', 10) > 0) dealCandidates.push({ id: c.id, channel: resolveChannel(c.properties || {}) })
   }
 
-  return { mqlCount: contacts.length, sqlCount: sql, workingMqls, sqlContactIds, dealCandidates }
+  // A contact whose SQL stage HubSpot merely copied from its company is not a real SQL (same rule as the MQL page).
+  const copied = await companyCopiedStageIds(apiKey, sqlContactIds)
+  const realSqlIds = sqlContactIds.filter(id => !copied.has(String(id)))
+  return { mqlCount: contacts.length, sqlCount: realSqlIds.length, workingMqls, sqlContactIds: realSqlIds, dealCandidates }
 }
 
 export async function GET(req: NextRequest) {
@@ -208,11 +211,16 @@ export async function GET(req: NextRequest) {
         // excluding them here keeps "reached SQL or beyond" (projection denominator) double-count free.
         const sqlWithoutDeal = cohort.sqlContactIds.filter(id => !outcome.opportunityContactIds.has(id)).length
         const opportunityOutcome = { won: outcome.won, lost: outcome.lost, stillOpen: outcome.stillOpen }
-        cached = { mqlCount: cohort.mqlCount, sqlCount: cohort.sqlCount, sqlWithoutDeal, workingMqls: cohort.workingMqls, opportunityCount: outcome.opportunityCount, opportunityOutcome, opportunityBySource: outcome.bySource, opportunityByChannel: outcome.byChannel }
+        cached = { mqlCount: cohort.mqlCount, currentSqlCount: cohort.sqlCount, sqlWithoutDeal, workingMqls: cohort.workingMqls, opportunityCount: outcome.opportunityCount, opportunityOutcome, opportunityBySource: outcome.bySource, opportunityByChannel: outcome.byChannel }
         await setCache(period, cached)
       }
 
-      const { mqlCount, sqlCount, sqlWithoutDeal, workingMqls, opportunityCount, opportunityOutcome, opportunityBySource, opportunityByChannel } = cached
+      const { mqlCount, sqlWithoutDeal, workingMqls, opportunityCount, opportunityOutcome, opportunityBySource, opportunityByChannel } = cached
+      // UNIFIED DEFINITION (2026-10-26): "SQLs" = cohort members that REACHED SQL = currently at SQL without a deal + those with a
+      // marketing-sourced deal (Opportunity). Same rule as the MQL page / Summary (SQL always >= Opportunity), so SQL->Opp can never
+      // exceed 100% and a lead that moved on to Opportunity no longer disappears from SQL.
+      const sqlCount = sqlWithoutDeal + opportunityCount
+      const currentSqlCount = cached.currentSqlCount ?? cached.sqlCount ?? 0
       const { won, lost, stillOpen } = opportunityOutcome
       const customersWon = won // deal-verified Closed Won count, scoped to this cohort's Opportunity-or-beyond contacts
 
@@ -222,7 +230,7 @@ export async function GET(req: NextRequest) {
         cohortStartDate,
         ageDays,
         maturity,
-        mqlCount, sqlCount, sqlWithoutDeal, workingMqls, activeSqls: sqlWithoutDeal, opportunityCount, customersWon,
+        mqlCount, sqlCount, currentSqlCount, sqlWithoutDeal, workingMqls, activeSqls: sqlWithoutDeal, opportunityCount, customersWon,
         opportunityBySource: opportunityBySource || {}, opportunityByChannel: opportunityByChannel || {},
         mqlToSql: { pct: mqlCount > 0 ? (sqlCount / mqlCount) * 100 : null },
         sqlToOpportunity: { pct: sqlCount > 0 ? (opportunityCount / sqlCount) * 100 : null },

@@ -82,6 +82,7 @@ function MQLPageInner() {
   // Month-to-date funnel — for the MQL Journey "this month" bracket
   const [monthToDateFunnel, setMonthToDateFunnel] = useState<Funnel | null>(null)
   const [monthToDateActivity, setMonthToDateActivity] = useState<{ sql: { count: number; ads: number }; opportunity: { count: number; ads: number } } | null>(null)
+  const [monthToDateBridge, setMonthToDateBridge] = useState<{ month: string; sql: Record<string, number>; opportunity: Record<string, number> } | null>(null)
   const [monthToDateLeads, setMonthToDateLeads] = useState<ReturnType<typeof buildPipelineHover> | null>(null)
 
 
@@ -167,6 +168,7 @@ function MQLPageInner() {
           if (json.funnel) setMonthToDateFunnel(json.funnel)
           setMonthToDateActivity(summarisePipelineActivity(json.pipeline_activity))
           setMonthToDateLeads(json.pipeline_activity ? buildPipelineHover(json.pipeline_activity) : null)
+          setMonthToDateBridge(json.pipeline_activity ? { month: format(new Date(), 'yyyy-MM'), sql: json.pipeline_activity.sql?.byCreatedMonth || {}, opportunity: json.pipeline_activity.opportunity?.byCreatedMonth || {} } : null)
         }
       })
       .catch(() => {})
@@ -483,6 +485,7 @@ function MQLPageInner() {
             monthlyFunnel={monthToDateFunnel ?? undefined}
             activity={hubspotData.pipeline_activity ? { sql: hubspotData.pipeline_activity.sql?.count ?? 0, opportunity: hubspotData.pipeline_activity.opportunity?.count ?? 0 } : undefined}
             monthlyActivity={monthToDateActivity ? { sql: monthToDateActivity.sql.count, opportunity: monthToDateActivity.opportunity.count } : undefined}
+            bridge={monthToDateBridge ?? undefined}
             sqlLeads={(monthToDateLeads ?? (hubspotData.pipeline_activity ? buildPipelineHover(hubspotData.pipeline_activity) : null))?.sql}
             oppLeads={(monthToDateLeads ?? (hubspotData.pipeline_activity ? buildPipelineHover(hubspotData.pipeline_activity) : null))?.opportunity}
           />}
