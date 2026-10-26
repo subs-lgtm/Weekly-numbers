@@ -16,6 +16,7 @@ import { Loader2, TrendingUp, TrendingDown, Minus, Pencil, Check, X } from "luci
 import { HighPriorityLeads } from "@/components/summary/HighPriorityLeads";
 import { OKRSection } from "@/components/summary/OKRSection";
 import { ActivitySummaryTable } from "@/components/summary/ActivitySummaryTable";
+import { TempMonthComparison } from "@/components/summary/TempMonthComparison";
 import { SummaryMeetingsPopover, SummaryLeadPopover, type MeetingRow, type HoverLead } from "@/components/mql/MQLScoreCards";
 
 // Key metrics pulled from across all sections
@@ -545,6 +546,9 @@ export default function SummaryPage() {
       <div className="space-y-6">
         {/* Key Metrics Overview */}
         <SummaryMetrics weekStart={ws} queryStart={queryStart} queryEnd={queryEnd} />
+
+        {/* TEMPORARY Sep-vs-Oct snapshot — remove this line and the import when no longer needed */}
+        <TempMonthComparison />
 
         {/* Activity Summary — top 3 planned activities this week, per category */}
         <div>
