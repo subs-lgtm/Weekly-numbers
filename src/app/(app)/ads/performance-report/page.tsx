@@ -13,8 +13,8 @@ const EMBED_URL = 'https://lyzr-performance-pipeline-report.vercel.app'
 export default function AdsPerformanceReportPage() {
   return (
     <SectionShell
-      title="3-Month Ads Performance"
-      description="Jun–Aug 2026 performance & pipeline report"
+      title="Ads Performance Report"
+      description="Jun–Oct 2026 performance & pipeline report (October to 26 Oct)"
     >
       <div className="space-y-4">
         <Link href="/ads" className="inline-flex items-center gap-1.5 text-[13px] text-[#6B4C4C] hover:underline">
