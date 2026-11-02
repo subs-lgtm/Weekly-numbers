@@ -107,7 +107,7 @@ export function SQLSourceBreakdown({ data, loading }: { data: BreakdownResponse 
   return (
     <Shell
       title="SQLs by Source — Last 3 Months" loading={loading} empty={months.length === 0}
-      tip="Same cohort as the Cohort Conversion table: Book a Demo contacts created in the month, currently at SQL lifecycle stage. Acquisition channel = paid signals (click IDs / UTMs) first, then lead source category, then original source; contacts with no web attribution (offline / integration-created) are shown as Unattributed rather than guessed. HubSpot original source is the raw first-touch field, shown for tie-back to attribution."
+      tip="Same cohort and same SQL rule as the Cohort Funnel Table: Book a Demo contacts created in the month that REACHED SQL - currently at the SQL stage, or already moved on to a marketing-sourced deal (Opportunity). Totals tie to that table. Acquisition channel = paid signals (click IDs / UTMs) first, then lead source category, then original source; contacts with no web attribution (offline / integration-created) are shown as Unattributed rather than guessed. HubSpot original source is the raw first-touch field, shown for tie-back to attribution."
       note="— how each month's SQLs originally entered the funnel."
     >
       <SourceTable months={months} pick={m => m.sql.byChannel} label="Acquisition channel" />

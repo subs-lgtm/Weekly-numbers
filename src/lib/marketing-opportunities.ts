@@ -19,63 +19,99 @@ export const STUDIO_DEALS_PIPELINE_ID = '668588091'
 export const MARKETING_DEAL_SOURCES = new Set(['Direct', 'Inbound', 'Marketing', 'Partner Lead', 'SI Partner', 'HyperScalar', 'Event'])
 export const DEAL_SOURCE_LABELS: Record<string, string> = { Direct: 'Direct / Outbound', HyperScalar: 'HyperScalers' }
 
+// --- Deal loading (shared, rate-limit safe) ------------------------------------------------------------
+// History: classifyOutcomes / fetchOpportunityDetails used to make 1 + N GET calls per contact and treated
+// ANY non-OK response (including HTTP 429 rate limits) as "this contact has no deal". When the Executive page
+// fired its routes in parallel, later months hit the rate limit and came back as 0 opportunities / $0 - and
+// that wrong result was then cached (flagged 2026-11-02: Sep/Oct pipeline showed $0 while HubSpot had 9 deals).
+// Now: two batch endpoints (v4 associations, v3 deals batch/read), retries on 429/5xx, and a hard error if a
+// call still fails - the route then returns 500 and caches nothing, instead of caching a silently-low number.
+
+async function hubspotPost(apiKey: string, path: string, body: unknown): Promise<any> {
+  let lastStatus = 0
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const res = await fetch(`${HUBSPOT_API_BASE}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) return res.json()
+    lastStatus = res.status
+    if (res.status === 429 || res.status >= 500) {
+      const retryAfter = parseFloat(res.headers.get('retry-after') || '')
+      await new Promise(r => setTimeout(r, Number.isFinite(retryAfter) ? retryAfter * 1000 : 1000 * (attempt + 1)))
+      continue
+    }
+    break
+  }
+  throw new Error(`HubSpot ${path} failed (${lastStatus})`)
+}
+
+type QualifyingDeal = {
+  id: string; dealname: string; amount: number; dealstage: string; deal_source: string
+  createdate: string; enteredCurrentStage: string
+}
+
+/** contactId -> its Studio Deals pipeline deals with a marketing deal_source (contacts without one are absent). */
+export async function loadQualifyingDeals(apiKey: string, contactIds: string[]): Promise<Map<string, QualifyingDeal[]>> {
+  const out = new Map<string, QualifyingDeal[]>()
+  const ids = Array.from(new Set(contactIds.map(String)))
+  if (ids.length === 0) return out
+
+  const dealsOfContact = new Map<string, string[]>()
+  for (let i = 0; i < ids.length; i += 500) {
+    const data = await hubspotPost(apiKey, '/crm/v4/associations/contacts/deals/batch/read', { inputs: ids.slice(i, i + 500).map(id => ({ id })) })
+    for (const r of data.results || []) dealsOfContact.set(String(r.from?.id), (r.to || []).map((t: any) => String(t.toObjectId)))
+  }
+
+  const allDealIds = Array.from(new Set(Array.from(dealsOfContact.values()).flat()))
+  const deals = new Map<string, any>()
+  for (let i = 0; i < allDealIds.length; i += 100) {
+    const data = await hubspotPost(apiKey, '/crm/v3/objects/deals/batch/read', {
+      properties: ['dealname', 'amount', 'dealstage', 'pipeline', 'deal_source', 'createdate', 'hs_v2_date_entered_current_stage'],
+      inputs: allDealIds.slice(i, i + 100).map(id => ({ id })),
+    })
+    for (const d of data.results || []) deals.set(String(d.id), d.properties || {})
+  }
+
+  for (const [contactId, dealIds] of dealsOfContact) {
+    const q: QualifyingDeal[] = []
+    for (const id of dealIds) {
+      const p = deals.get(id)
+      if (!p || p.pipeline !== STUDIO_DEALS_PIPELINE_ID || !MARKETING_DEAL_SOURCES.has(p.deal_source)) continue
+      q.push({
+        id, dealname: p.dealname || '', amount: parseFloat(p.amount || '0') || 0, dealstage: p.dealstage || '',
+        deal_source: p.deal_source, createdate: p.createdate || '', enteredCurrentStage: p.hs_v2_date_entered_current_stage || p.createdate || '',
+      })
+    }
+    if (q.length) out.set(contactId, q)
+  }
+  return out
+}
+
 /**
  * Deal-based Opportunities for a fixed cohort of contacts, as of right now. A cohort contact
  * counts as an Opportunity ONLY if it has at least one associated Studio Deals pipeline deal whose
- * deal_source is Direct/Inbound/Marketing — the contact's own `lifecyclestage` label is never
- * consulted (it can say Opportunity/Customer with no deal behind it; confirmed on real September
- * contacts, user flagged Karim Sabbagh who has no deal in HubSpot at all). Outcome per qualifying
- * contact: WON if any qualifying deal is Closed Won, else LOST if one is Closed Lost/Dropped,
- * else STILL_OPEN.
+ * deal_source is in MARKETING_DEAL_SOURCES — the contact's own `lifecyclestage` label is never
+ * consulted. Outcome per qualifying contact: WON if any qualifying deal is Closed Won, else LOST if
+ * one is Closed Lost/Dropped, else STILL_OPEN.
  */
 export async function classifyOutcomes(apiKey: string, candidates: Array<{ id: string; channel: string }>) {
   let won = 0, lost = 0, stillOpen = 0
   const opportunityContactIds = new Set<string>()
   const bySource: Record<string, number> = {}
   const byChannel: Record<string, number> = {}
-  const contactIds = candidates.map(c => c.id)
-  const channelOf = new Map(candidates.map(c => [c.id, c.channel]))
-
-  const BATCH = 8
-  for (let i = 0; i < contactIds.length; i += BATCH) {
-    const batch = contactIds.slice(i, i + BATCH)
-    const results = await Promise.all(batch.map(async (id) => {
-      try {
-        const assocRes = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/${id}/associations/deals?limit=10`, {
-          headers: { Authorization: `Bearer ${apiKey}` },
-        })
-        if (!assocRes.ok) return null
-        const assocData = await assocRes.json()
-        const dealIds = (assocData.results || []).map((r: any) => r.id)
-        let qualifies = false, sawWon = false, sawLost = false, source = ''
-        for (const dealId of dealIds) {
-          const dealRes = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/deals/${dealId}?properties=dealstage,pipeline,deal_source`, {
-            headers: { Authorization: `Bearer ${apiKey}` },
-          })
-          if (!dealRes.ok) continue
-          const props = (await dealRes.json()).properties || {}
-          if (props.pipeline !== STUDIO_DEALS_PIPELINE_ID || !MARKETING_DEAL_SOURCES.has(props.deal_source)) continue
-          qualifies = true
-          if (!source) source = props.deal_source
-          if (props.dealstage === CLOSED_WON_STAGE_ID) sawWon = true
-          else if (CLOSED_LOST_STAGE_IDS.has(props.dealstage)) sawLost = true
-        }
-        if (!qualifies) return null
-        return { id, source, outcome: sawWon ? 'WON' : sawLost ? 'LOST' : 'STILL_OPEN' }
-      } catch { return null }
-    }))
-    for (const r of results) {
-      if (!r) continue
-      opportunityContactIds.add(r.id)
-      const srcLabel = DEAL_SOURCE_LABELS[r.source] || r.source
-      bySource[srcLabel] = (bySource[srcLabel] || 0) + 1
-      const ch = channelOf.get(r.id) || 'Unknown'
-      byChannel[ch] = (byChannel[ch] || 0) + 1
-      if (r.outcome === 'WON') won++
-      else if (r.outcome === 'LOST') lost++
-      else stillOpen++
-    }
-    if (i + BATCH < contactIds.length) await new Promise(r => setTimeout(r, 150))
+  const channelOf = new Map(candidates.map(c => [String(c.id), c.channel]))
+  const qualifying = await loadQualifyingDeals(apiKey, candidates.map(c => String(c.id)))
+  for (const [id, deals] of qualifying) {
+    opportunityContactIds.add(id)
+    const srcLabel = DEAL_SOURCE_LABELS[deals[0].deal_source] || deals[0].deal_source
+    bySource[srcLabel] = (bySource[srcLabel] || 0) + 1
+    const ch = channelOf.get(id) || 'Unknown'
+    byChannel[ch] = (byChannel[ch] || 0) + 1
+    if (deals.some(d => d.dealstage === CLOSED_WON_STAGE_ID)) won++
+    else if (deals.some(d => CLOSED_LOST_STAGE_IDS.has(d.dealstage))) lost++
+    else stillOpen++
   }
   return { won, lost, stillOpen, opportunityCount: opportunityContactIds.size, opportunityContactIds, bySource, byChannel }
 }
@@ -138,45 +174,23 @@ export type OpportunityDetail = {
  * contact has several qualifying deals the one with the largest amount (then the newest) is used, so the
  * count stays "contacts" like the cohort table while the value is that deal's amount.
  */
-export async function fetchOpportunityDetails(apiKey: string, candidates: Array<{ id: string; channel: string }>): Promise<OpportunityDetail[]> {
+export async function fetchOpportunityDetails(apiKey: string, candidates: Array<{ id: string; channel: string }>, preloaded?: Map<string, QualifyingDeal[]>): Promise<OpportunityDetail[]> {
+  const qualifying = preloaded ?? await loadQualifyingDeals(apiKey, candidates.map(c => String(c.id)))
   const out: OpportunityDetail[] = []
-  const headers = { Authorization: `Bearer ${apiKey}` }
-  const BATCH = 8
-  for (let i = 0; i < candidates.length; i += BATCH) {
-    const rows = await Promise.all(candidates.slice(i, i + BATCH).map(async (cand) => {
-      try {
-        const a = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/contacts/${cand.id}/associations/deals?limit=10`, { headers })
-        if (!a.ok) return null
-        const ids: string[] = ((await a.json()).results || []).map((r: any) => r.id)
-        const deals: any[] = []
-        for (const id of ids) {
-          const d = await fetch(`${HUBSPOT_API_BASE}/crm/v3/objects/deals/${id}?properties=dealname,amount,dealstage,pipeline,deal_source,createdate,hs_v2_date_entered_current_stage`, { headers })
-          if (!d.ok) continue
-          const dj = await d.json()
-          const p = dj.properties || {}
-          if (p.pipeline !== STUDIO_DEALS_PIPELINE_ID || !MARKETING_DEAL_SOURCES.has(p.deal_source)) continue
-          deals.push({ id: dj.id, ...p })
-        }
-        if (!deals.length) return null
-        deals.sort((x, y) => (parseFloat(y.amount || '0') - parseFloat(x.amount || '0')) || String(y.createdate).localeCompare(String(x.createdate)))
-        const best = deals[0]
-        const info = STAGE_INFO[best.dealstage]
-        const since = new Date(best.hs_v2_date_entered_current_stage || best.createdate).getTime()
-        const daysInStage = Math.max(0, Math.floor((Date.now() - since) / 86_400_000))
-        const group = info?.group ?? 'unknown'
-        const open = group === 'top' || group === 'middle' || group === 'stalled'
-        return {
-          contactId: cand.id, dealId: String(best.id), name: best.dealname || '(unnamed)',
-          amount: parseFloat(best.amount || '0') || 0,
-          stageId: best.dealstage, stage: info?.label ?? best.dealstage, group,
-          dealSource: DEAL_SOURCE_LABELS[best.deal_source] || best.deal_source,
-          channel: cand.channel, createdAt: best.createdate,
-          daysInStage, stuck: open && daysInStage > STUCK_AFTER_DAYS,
-        } as OpportunityDetail
-      } catch { return null }
-    }))
-    for (const r of rows) if (r) out.push(r)
-    if (i + BATCH < candidates.length) await new Promise(r => setTimeout(r, 150))
+  for (const cand of candidates) {
+    const deals = qualifying.get(String(cand.id))
+    if (!deals?.length) continue
+    const best = [...deals].sort((x, y) => (y.amount - x.amount) || String(y.createdate).localeCompare(String(x.createdate)))[0]
+    const info = STAGE_INFO[best.dealstage]
+    const daysInStage = Math.max(0, Math.floor((Date.now() - new Date(best.enteredCurrentStage).getTime()) / 86_400_000))
+    const group = info?.group ?? 'unknown'
+    const open = group === 'top' || group === 'middle' || group === 'stalled'
+    out.push({
+      contactId: String(cand.id), dealId: best.id, name: best.dealname || '(unnamed)', amount: best.amount,
+      stageId: best.dealstage, stage: info?.label ?? best.dealstage, group,
+      dealSource: DEAL_SOURCE_LABELS[best.deal_source] || best.deal_source,
+      channel: cand.channel, createdAt: best.createdate, daysInStage, stuck: open && daysInStage > STUCK_AFTER_DAYS,
+    })
   }
   return out
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchOpportunityDetails, resolveChannel, type OpportunityDetail } from '@/lib/marketing-opportunities'
+import { fetchOpportunityDetails, loadQualifyingDeals, companyCopiedStageIds, resolveChannel, type OpportunityDetail } from '@/lib/marketing-opportunities'
 import { THEMES, NONE, extractUseCase, classifyUseCase } from '@/lib/use-case-themes'
 
 /**
@@ -10,12 +10,14 @@ import { THEMES, NONE, extractUseCase, classifyUseCase } from '@/lib/use-case-th
  *   2. Opportunity pipeline         (count, value, source split, current stage, bottom-of-funnel / stuck flags)
  *   3. SQLs & Opportunities by use case (keyword themes on the form message / LinkedIn lead-form answer)
  *
- * Same population as the Cohort Funnel Table: contacts created in the month with Book a Demo in
- * lead_form_type (excluding @lyzr.ai). "SQL" = contact CURRENTLY at the SQL lifecycle stage (internal value
- * 'opportunity', see CLAUDE.md), so the SQL columns tie to the cohort table's SQLs column (e.g. 15 for
- * September). "Opportunity" = cohort contact with a marketing-sourced Studio Deals deal, exactly the cohort
- * table's definition (src/lib/marketing-opportunities.ts). Channel = resolveChannel() - paid signals first,
- * then lead_source_category, then HubSpot original source, else "Unattributed".
+ * Same population AND same definitions as the Cohort Funnel Table (so the totals tie out row for row):
+ * contacts created in the month with Book a Demo in lead_form_type (excluding @lyzr.ai).
+ *   SQL         = REACHED SQL: currently at the SQL lifecycle stage (internal 'opportunity', stage not merely copied
+ *                 from the company record) OR has a marketing-sourced Studio deal. (Unified 2026-10-26; this panel
+ *                 kept the old "currently exactly at SQL" rule until 2026-11-02, so leads that had already moved on
+ *                 to a deal - e.g. October's two paid leads, Moxa and Bosch Hungary - vanished from it.)
+ *   Opportunity = cohort contact with a marketing-sourced Studio Deals deal (src/lib/marketing-opportunities.ts).
+ * Channel = resolveChannel() - paid signals first, then lead_source_category, then HubSpot original source.
  */
 
 const HUBSPOT_API_BASE = 'https://api.hubapi.com'
@@ -48,7 +50,7 @@ function getCacheDb() {
 async function getCache(period: string): Promise<any | null> {
   try {
     const db = getCacheDb(); if (!db) return null
-    const doc = await db.collection('executive_breakdown_cache_v1').doc(period).get()
+    const doc = await db.collection('executive_breakdown_cache_v2').doc(period).get()
     if (!doc.exists) return null
     const d = doc.data()!
     // Deal stages move, so even closed months are only trusted for an hour.
@@ -56,7 +58,7 @@ async function getCache(period: string): Promise<any | null> {
   } catch { return null }
 }
 async function setCache(period: string, result: any) {
-  try { const db = getCacheDb(); if (db) await db.collection('executive_breakdown_cache_v1').doc(period).set({ result, cachedAt: new Date() }) } catch {}
+  try { const db = getCacheDb(); if (db) await db.collection('executive_breakdown_cache_v2').doc(period).set({ result, cachedAt: new Date() }) } catch {}
 }
 
 async function searchContacts(apiKey: string, filters: any[], properties: string[]): Promise<any[]> {
@@ -91,7 +93,22 @@ async function computeMonth(apiKey: string, monthStart: Date, monthEnd: Date) {
     { propertyName: 'lead_form_type', operator: 'CONTAINS_TOKEN', value: 'Book a Demo' },
   ], ['lifecyclestage', 'num_associated_deals', 'lead_source_category', 'hs_analytics_source', 'utm_source', 'utm_medium', 'message', 'platform_tools'])
 
-  // --- 1. SQLs by source ------------------------------------------------------------------------
+  // --- deals first: a lead with a marketing-sourced deal counts as an SQL even if its lifecycle label moved on ---
+  const channelOf = new Map<string, string>()
+  const dealCandidates: Array<{ id: string; channel: string }> = []
+  const exactSqlIds: string[] = []
+  for (const c of contacts) {
+    const props = c.properties || {}
+    const id = String(c.id)
+    channelOf.set(id, resolveChannel(props))
+    if (SQL_EXACT.has(props.lifecyclestage || '')) exactSqlIds.push(id)
+    if (parseInt(props.num_associated_deals || '0', 10) > 0) dealCandidates.push({ id, channel: channelOf.get(id)! })
+  }
+  const qualifying = await loadQualifyingDeals(apiKey, dealCandidates.map(d => d.id))
+  const copied = await companyCopiedStageIds(apiKey, exactSqlIds)
+  const sqlIds = new Set<string>([...exactSqlIds.filter(id => !copied.has(id)), ...qualifying.keys()])
+
+  // --- 1. SQLs by source --------------------------------------------------------------------------
   const sqlByChannel: Record<string, number> = {}
   const sqlByOriginal: Record<string, number> = {}
   const sqlByChannelOriginal: Record<string, Record<string, number>> = {}
@@ -103,13 +120,13 @@ async function computeMonth(apiKey: string, monthStart: Date, monthEnd: Date) {
   const themeOf = (props: any) => classifyUseCase(extractUseCase({ message: props.message || '', platformTools: props.platform_tools || '' }).text).key
   const themeByContact = new Map<string, string>()
 
-  const dealCandidates: Array<{ id: string; channel: string }> = []
   for (const c of contacts) {
     const props = c.properties || {}
-    const channel = resolveChannel(props)
+    const id = String(c.id)
+    const channel = channelOf.get(id)!
     const theme = themeOf(props)
-    themeByContact.set(String(c.id), theme)
-    if (SQL_EXACT.has(props.lifecyclestage || '')) {
+    themeByContact.set(id, theme)
+    if (sqlIds.has(id)) {
       sqlTotal++
       bump(sqlByChannel, channel)
       const orig = ORIGINAL_SOURCE_LABEL[props.hs_analytics_source || ''] || props.hs_analytics_source || 'Unknown'
@@ -117,11 +134,10 @@ async function computeMonth(apiKey: string, monthStart: Date, monthEnd: Date) {
       ;(sqlByChannelOriginal[channel] ||= {})[orig] = ((sqlByChannelOriginal[channel] || {})[orig] || 0) + 1
       bump(sqlUseCase, theme)
     }
-    if (parseInt(props.num_associated_deals || '0', 10) > 0) dealCandidates.push({ id: String(c.id), channel })
   }
 
   // --- 2. opportunity pipeline --------------------------------------------------------------------
-  const deals: OpportunityDetail[] = await fetchOpportunityDetails(apiKey, dealCandidates)
+  const deals: OpportunityDetail[] = await fetchOpportunityDetails(apiKey, dealCandidates, qualifying)
   const bySource: Record<string, { count: number; value: number }> = {}
   const byStage: Record<string, { stage: string; group: string; count: number; value: number }> = {}
   const groups: Record<string, { count: number; value: number }> = {}

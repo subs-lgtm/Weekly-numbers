@@ -74,7 +74,7 @@ async function getCached(key: string, end: string): Promise<any | null> {
   try {
     const db = getCacheDb()
     if (!db) return null
-    const doc = await db.collection('executive_flow_cache_v6').doc(key).get()
+    const doc = await db.collection('executive_flow_cache_v7').doc(key).get()
     if (!doc.exists) return null
     const data = doc.data()!
     const cachedAt = data.cachedAt?.toDate?.() || new Date(0)
@@ -90,7 +90,7 @@ async function setCache(key: string, result: any): Promise<void> {
   try {
     const db = getCacheDb()
     if (!db) return
-    await db.collection('executive_flow_cache_v6').doc(key).set({ result, cachedAt: new Date() })
+    await db.collection('executive_flow_cache_v7').doc(key).set({ result, cachedAt: new Date() })
   } catch {}
 }
 
