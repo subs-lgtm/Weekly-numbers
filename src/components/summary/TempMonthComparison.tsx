@@ -21,6 +21,7 @@ const PRIORITY: { month: string; share: string }[] = [
 
 export function TempMonthComparison() {
   return (
+    <div className="space-y-4">
     <div className="grid gap-4 md:grid-cols-2">
       <div className="card">
         <div className="card-head">
@@ -75,6 +76,44 @@ export function TempMonthComparison() {
           Share of each month&apos;s MQLs scored High or Medium priority in HubSpot (full months, October to 31 Oct).
         </p>
       </div>
+    </div>
+
+    <div className="card">
+      <div className="card-head">
+        <span className="card-title">How to read September vs October</span>
+        <span className="rounded-full bg-[#FBF1E4] px-2 py-[1px] text-[10px] font-[600] text-[#8A5A14]">Temporary snapshot</span>
+      </div>
+      <p className="text-[14px] font-[600] leading-snug text-[#2A1F1A]">
+        Pipeline output is up; lead volume and lead quality are still below June and July.
+      </p>
+      <div className="mt-3 grid gap-4 text-[12.5px] leading-snug text-[#2A1F1A] md:grid-cols-3">
+        <div>
+          <p className="mb-1 text-[11px] font-[700] uppercase tracking-wide text-[#16A34A]">What is up</p>
+          <ul className="list-disc space-y-1 pl-4">
+            <li>Opportunities went from 10 to 12 and pipeline from $1.66M to $3.91M, on 31% fewer MQLs.</li>
+            <li>The team turned more of the leads it already had into pipeline in October than in September.</li>
+          </ul>
+        </div>
+        <div>
+          <p className="mb-1 text-[11px] font-[700] uppercase tracking-wide text-[#DC2626]">What is still down</p>
+          <ul className="list-disc space-y-1 pl-4">
+            <li>MQLs fell from 262 to 182.</li>
+            <li>High + Medium share is 18%, against 45–49% in June and July. September, at 15%, was the weakest month, so it is an easy month to beat.</li>
+          </ul>
+        </div>
+        <div>
+          <p className="mb-1 text-[11px] font-[700] uppercase tracking-wide text-[#8A5A14]">Read it carefully</p>
+          <ul className="list-disc space-y-1 pl-4">
+            <li>Most of October&apos;s result came from earlier leads maturing: only 4 of the 22 SQLs and 4 of the 12 Opportunities came from October&apos;s own leads. This is not a sign that October&apos;s lead quality improved.</li>
+            <li>The Executive page shows 4 SQLs for October because it counts only October&apos;s own leads; this table counts everything that became an SQL in October.</li>
+            <li>Of the 12 Opportunities, 8 ($2.91M) are Direct / Inbound deals and 4 ($1.00M) are partner- or event-sourced. One of those 4, Accenture–Chevron ($250K), came from a paid LinkedIn GSI/SI campaign. One deal (Nordic Capital, $1.5M) is 38% of the $3.91M.</li>
+          </ul>
+        </div>
+      </div>
+      <p className="mt-3 text-[12.5px] leading-snug text-[#2A1F1A]">
+        <span className="font-[700]">Why it matters:</span> November and December pipeline depends on this month&apos;s leads maturing. With fewer leads and a lower High + Medium share, lifting that share is the lever to protect it.
+      </p>
+    </div>
     </div>
   )
 }

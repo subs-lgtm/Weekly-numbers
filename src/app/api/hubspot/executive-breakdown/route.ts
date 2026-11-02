@@ -50,7 +50,7 @@ function getCacheDb() {
 async function getCache(period: string): Promise<any | null> {
   try {
     const db = getCacheDb(); if (!db) return null
-    const doc = await db.collection('executive_breakdown_cache_v2').doc(period).get()
+    const doc = await db.collection('executive_breakdown_cache_v3').doc(period).get()
     if (!doc.exists) return null
     const d = doc.data()!
     // Deal stages move, so even closed months are only trusted for an hour.
@@ -58,7 +58,7 @@ async function getCache(period: string): Promise<any | null> {
   } catch { return null }
 }
 async function setCache(period: string, result: any) {
-  try { const db = getCacheDb(); if (db) await db.collection('executive_breakdown_cache_v2').doc(period).set({ result, cachedAt: new Date() }) } catch {}
+  try { const db = getCacheDb(); if (db) await db.collection('executive_breakdown_cache_v3').doc(period).set({ result, cachedAt: new Date() }) } catch {}
 }
 
 async function searchContacts(apiKey: string, filters: any[], properties: string[]): Promise<any[]> {
@@ -84,6 +84,34 @@ async function searchContacts(apiKey: string, filters: any[], properties: string
 }
 
 const bump = (m: Record<string, number>, k: string, n = 1) => { m[k] = (m[k] || 0) + n }
+
+/**
+ * Paid-attributed Opportunities that sit OUTSIDE the Book a Demo cohort: leads created in the month through another form
+ * (e.g. "GSI and SI") whose paid signals (LinkedIn Ads / Google Ads UTMs, original source) resolve to "Paid Campaigns" and that
+ * have a marketing-sourced Studio deal. Shown as its own line so the cohort totals above (Book a Demo only) keep tying out
+ * to the Cohort Funnel Table; these are NOT added to them. Example: Accenture - Chevron Engine_OpenFinetuner (LinkedIn GSI/SI).
+ */
+async function computePaidOtherForms(apiKey: string, monthStart: Date, monthEnd: Date) {
+  const contacts = await searchContacts(apiKey, [
+    { propertyName: 'createdate', operator: 'GTE', value: monthStart.getTime().toString() },
+    { propertyName: 'createdate', operator: 'LT', value: monthEnd.getTime().toString() },
+    { propertyName: 'email', operator: 'NOT_CONTAINS_TOKEN', value: 'lyzr.ai' },
+    { propertyName: 'num_associated_deals', operator: 'GTE', value: '1' },
+  ], ['lead_form_type', 'lead_source_category', 'hs_analytics_source', 'utm_source', 'utm_medium', 'company', 'email'])
+  const candidates: Array<{ id: string; channel: string }> = []
+  for (const c of contacts) {
+    const p = c.properties || {}
+    const forms = String(p.lead_form_type || '').split(';').map((x: string) => x.trim()).filter(Boolean)
+    if (!forms.some(f => f !== 'Agent Studio') || forms.some(f => /book a demo/i.test(f))) continue
+    const email = String(p.email || '').toLowerCase()
+    if (email.includes('lyzr.com') || /^lyzr/i.test(String(p.company || ''))) continue
+    const channel = resolveChannel(p)
+    if (channel === 'Paid Campaigns') candidates.push({ id: String(c.id), channel })
+  }
+  const deals = await fetchOpportunityDetails(apiKey, candidates)
+  deals.sort((a, b) => b.amount - a.amount)
+  return { count: deals.length, value: deals.reduce((s, d) => s + d.amount, 0), deals }
+}
 
 async function computeMonth(apiKey: string, monthStart: Date, monthEnd: Date) {
   const contacts = await searchContacts(apiKey, [
@@ -155,11 +183,13 @@ async function computeMonth(apiKey: string, monthStart: Date, monthEnd: Date) {
     bump(oppUseCase, themeByContact.get(d.contactId) || NONE.key)
   }
   deals.sort((a, b) => b.amount - a.amount)
+  const paidOtherForms = await computePaidOtherForms(apiKey, monthStart, monthEnd)
 
   return {
     mqls: contacts.length,
     sql: { total: sqlTotal, byChannel: sqlByChannel, byOriginalSource: sqlByOriginal, byChannelOriginal: sqlByChannelOriginal },
     opportunities: { count: deals.length, totalValue, bySource, byStage: Object.values(byStage), groups, stuck: { count: stuckCount, value: stuckValue }, deals },
+    paidOtherForms,
     useCases: { sql: sqlUseCase, opportunities: oppUseCase },
   }
 }

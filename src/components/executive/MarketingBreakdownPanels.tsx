@@ -20,6 +20,8 @@ export type BreakdownMonth = {
     groups: ValueMap; stuck: { count: number; value: number }; deals: BreakdownDeal[]
   }
   useCases: { sql: CountMap; opportunities: CountMap }
+  /** Paid-attributed Opportunities from non-Book-a-Demo forms (e.g. GSI and SI); kept outside the cohort totals. */
+  paidOtherForms?: { count: number; value: number; deals: (BreakdownDeal & { createdAt: string })[] }
 }
 export type BreakdownTheme = { key: string; label: string; color: string }
 export type BreakdownResponse = { months: BreakdownMonth[]; themes: BreakdownTheme[] }
@@ -123,6 +125,8 @@ export function OpportunityPipelinePanel({ data, loading }: { data: BreakdownRes
     .sort((a, b) => b.amount - a.amount)
   const totalCount = months.reduce((a, m) => a + m.opportunities.count, 0)
   const totalValue = months.reduce((a, m) => a + m.opportunities.totalValue, 0)
+  const paidOther = months.flatMap(m => (m.paidOtherForms?.deals || []).map(d => ({ ...d, month: m.label.split(' ')[0] })))
+    .sort((a, b) => b.amount - a.amount)
 
   return (
     <Shell
@@ -190,6 +194,37 @@ export function OpportunityPipelinePanel({ data, loading }: { data: BreakdownRes
           })}
         </tbody>
       </table>
+
+      {paidOther.length > 0 && (
+        <div className="mb-5 rounded-[12px] border border-[#E7D9B8] bg-[#FBF6EA] px-3 py-2.5">
+          <p className="text-[11px] uppercase tracking-[.05em] text-[#8A5A14] font-[700] mb-0.5">
+            Paid via other forms (e.g. GSI / SI) — {paidOther.length} · {money(paidOther.reduce((a, d) => a + d.amount, 0))}
+          </p>
+          <p className="text-[11px] text-[#7A6A60] mb-2">
+            Paid-campaign leads that came in through another form (not Book a Demo) and have a Studio deal. Shown separately: they are NOT in the cohort totals above, so those still tie to the Cohort Funnel Table.
+          </p>
+          <table className="w-full text-[13px] border-collapse min-w-[520px]">
+            <thead>
+              <tr className={head}>
+                <th className={th}>Deal</th><th className={th}>Lead month</th><th className={th}>Deal created</th>
+                <th className={th}>Stage</th><th className={th}>Source</th><th className="py-2 font-[600] text-right">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paidOther.map(d => (
+                <tr key={d.dealId} className="border-b border-[#EEE7DC] last:border-0">
+                  <td className="py-2 pr-2 font-[600] text-[#2A1F1A]">{d.name}</td>
+                  <td className="py-2 pr-2 text-[#7A6A60]">{d.month}</td>
+                  <td className="py-2 pr-2 text-[#7A6A60]">{d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—'}</td>
+                  <td className="py-2 pr-2">{d.stage}</td>
+                  <td className="py-2 pr-2 text-[#7A6A60]">{d.dealSource}</td>
+                  <td className="py-2 text-right font-[600]">{money(d.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <p className="text-[11px] uppercase tracking-[.05em] text-[#7A6A60] font-[600] mb-1">Current stage (count · value)</p>
       <table className="w-full text-[13px] border-collapse min-w-[520px] mb-5">
